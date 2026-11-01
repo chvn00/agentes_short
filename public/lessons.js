@@ -1,0 +1,116 @@
+// Contenido del taller: agenda de 2 horas, módulos y agentes de ejemplo.
+window.MODULES = [
+  {
+    id: 'm1', min: 15, title: 'Qué es un agente', icon: '🧭',
+    goal: 'Distinguir un chatbot de un agente y reconocer las cinco piezas de un agente.',
+    concepts: [
+      ['Chatbot', 'Responde con lo que aprendió. No puede consultar nada ni hacer nada fuera del texto.'],
+      ['Agente', 'Un modelo que decide qué hacer: puede llamar herramientas, mirar el resultado y seguir hasta resolver la tarea.'],
+      ['Las 5 piezas', 'Modelo (el cerebro) · Instrucciones (el rol) · Herramientas (las manos) · Conocimiento y memoria (lo que sabe) · Bucle (percibir → razonar → actuar → observar).'],
+      ['Por qué importa', 'Un modelo solo inventa la hora, el clima y las cuentas. Un agente los consulta.']
+    ],
+    steps: [
+      'Abre el Constructor con el agente «Asistente básico» (botón de abajo).',
+      'Pregúntale: «¿Qué hora es en Bucaramanga?» y «¿Cuánto es el 17 % de 2.350.000?».',
+      'Anota qué respondió y si puedes confiar en el resultado. Eso es lo que vamos a arreglar.'
+    ],
+    preset: 'basico',
+    check: ['Puedo explicar la diferencia entre chatbot y agente', 'Nombré las 5 piezas de un agente', 'Vi al asistente básico equivocarse o inventar un dato']
+  },
+  {
+    id: 'm2', min: 25, title: 'Instrucciones y parámetros', icon: '🎛️',
+    goal: 'Escribir un prompt de sistema claro y entender qué cambian la temperatura y el modelo.',
+    concepts: [
+      ['Prompt de sistema', 'Una buena instrucción tiene: rol («Eres…»), tarea, tono, formato de la respuesta y límites («si no sabes, dilo»).'],
+      ['Temperatura', '0 = respuestas casi idénticas, ideal para datos y cálculos. Cerca de 1 = más variedad, útil para ideas; también más riesgo de inventar.'],
+      ['Modelo', 'El 70B razona mejor y llama herramientas con más fiabilidad. El 8B es más rápido y tiene menos cuota de uso.'],
+      ['Tokens', 'El modelo lee y escribe en fragmentos de texto. Instrucciones más cortas dejan más espacio para la conversación.']
+    ],
+    steps: [
+      'Carga el agente «Tutor de agentes de IA» y léelo: identifica rol, tono, formato y límites.',
+      'Haz la misma pregunta con temperatura 0 y con 1.2. Compara las dos respuestas.',
+      'Cambia el prompt para que responda solo con 3 viñetas y pruébalo.',
+      'Elige el dominio de tu agente final (por ejemplo: clínica, tienda, universidad, finanzas) y escribe su primer prompt.'
+    ],
+    preset: 'tutor',
+    check: ['Identifiqué rol, tono, formato y límites en un prompt', 'Comparé temperatura 0 contra 1.2', 'Escribí el primer prompt de mi agente']
+  },
+  {
+    id: 'm3', min: 30, title: 'Herramientas', icon: '🔧',
+    goal: 'Dar herramientas a un agente y leer cómo decide usarlas.',
+    concepts: [
+      ['Llamada a herramientas', 'El modelo no ejecuta nada. Pide «usa la calculadora con esto»; el servidor la ejecuta y le devuelve el resultado para que continúe.'],
+      ['La descripción manda', 'El modelo elige la herramienta por su descripción. Una descripción vaga produce un uso erróneo o ninguno.'],
+      ['Traza', 'En el Constructor ves cada paso: herramienta, argumentos y resultado. Si el agente falla, la traza dice dónde.'],
+      ['Herramientas del taller', 'Calculadora · Fecha y hora · Clima actual (datos reales de Open-Meteo) · Buscar en mis notas.']
+    ],
+    steps: [
+      'Carga «Asistente con herramientas». Repite las dos preguntas del módulo 1 y compara.',
+      'Pregunta: «¿Qué clima hace hoy en Bucaramanga y en Medellín? ¿Cuál es más caliente?».',
+      'Desactiva una herramienta y repite la pregunta. ¿Qué hace el agente sin ella?',
+      'Activa en tu agente las herramientas que necesita y pruébalas con 2 preguntas.'
+    ],
+    preset: 'herramientas',
+    check: ['Vi la traza de una llamada a herramienta', 'Comparé el agente con y sin herramienta', 'Mi agente usa al menos una herramienta']
+  },
+  {
+    id: 'm4', min: 25, title: 'Conocimiento y memoria', icon: '📚',
+    goal: 'Hacer que el agente responda desde tus documentos y reconocer sus límites.',
+    concepts: [
+      ['Memoria de la conversación', 'El agente recuerda lo que se dijo porque le reenviamos los últimos mensajes. Si los borras (Nueva conversación), olvida todo.'],
+      ['Conocimiento propio', 'Pegas tus notas y el agente las busca antes de responder. Es una versión mínima de RAG: buscar primero, responder después.'],
+      ['Alucinación', 'Si la respuesta no está en las notas, un modelo mal instruido la inventa. La instrucción «si no está en las notas, dilo» lo corrige.'],
+      ['Límites', 'Esta búsqueda compara palabras clave. En el curso completo se usan embeddings para buscar por significado.']
+    ],
+    steps: [
+      'Carga «Agente con notas» y pregúntale por el horario y por el costo de un curso.',
+      'Pregunta algo que NO está en las notas. ¿Lo reconoce o lo inventa?',
+      'Pega en tu agente una página de tus propias notas o reglamento y haz 3 preguntas.',
+      'Borra la conversación y pregunta por algo que dijiste antes: así verás la memoria.'
+    ],
+    preset: 'notas',
+    check: ['Mi agente responde con datos de mis notas', 'Probé una pregunta que no está en las notas', 'Entendí cómo recuerda la conversación']
+  },
+  {
+    id: 'm5', min: 20, title: 'Reto: tu agente', icon: '🏁',
+    goal: 'Terminar, probar y exportar un agente propio.',
+    concepts: [
+      ['Qué debe cumplir', 'Nombre y rol claros · al menos una herramienta o notas propias · límites escritos en el prompt · 3 pruebas que funcionen.'],
+      ['Cómo se evalúa', 'Una prueba que debe funcionar, una que muestre una herramienta en la traza y una que muestre que el agente reconoce lo que no sabe.'],
+      ['Exportar', 'Descarga la configuración (.json) para volver a cargarla, y el script de Python para correr el mismo agente fuera de esta página.'],
+      ['Siguiente paso', 'LangChain y LangGraph para agentes con varios pasos, FastAPI para publicarlos como servicio y Railway para ponerlos en línea: es el módulo completo de la maestría.']
+    ],
+    steps: [
+      'Termina tu agente en el Constructor: nombre, prompt, herramientas y notas.',
+      'Ejecuta las 3 pruebas del reto y guarda una captura de cada una.',
+      'Descarga la configuración (.json) y el script de Python.',
+      'Presenta tu agente en 1 minuto: qué hace, qué herramienta usa y qué no sabe hacer.'
+    ],
+    preset: null,
+    check: ['Mi agente tiene rol, herramientas y límites', 'Pasó las 3 pruebas', 'Descargué el .json y el script de Python']
+  }
+];
+
+window.PRESETS = {
+  basico: {
+    name: 'Asistente básico',
+    system: 'Eres un asistente. Responde en español, de forma breve.',
+    model: 'llama-3.3-70b-versatile', temperature: 0.7, tools: [], knowledge: ''
+  },
+  tutor: {
+    name: 'Tutor de agentes de IA',
+    system: 'Eres un tutor de agentes de IA para estudiantes de maestría.\nTarea: explicar conceptos de forma clara, con un ejemplo corto.\nTono: cercano y profesional.\nFormato: máximo 4 líneas por respuesta; si hay pasos, usa una lista numerada.\nLímites: si la pregunta no trata de agentes, modelos de lenguaje o programación, dilo con amabilidad y redirige al tema.',
+    model: 'llama-3.3-70b-versatile', temperature: 0.3, tools: [], knowledge: ''
+  },
+  herramientas: {
+    name: 'Asistente con herramientas',
+    system: 'Eres un asistente práctico. Responde en español y muestra siempre el dato que obtuviste.\nUsa la calculadora para cualquier cuenta, la herramienta de clima para el tiempo y la de fecha y hora para el día y la hora.\nNo adivines números: si una herramienta falla, dilo.',
+    model: 'llama-3.3-70b-versatile', temperature: 0.1, tools: ['calculadora', 'fecha_hora', 'clima'], knowledge: ''
+  },
+  notas: {
+    name: 'Agente con notas',
+    system: 'Eres el asistente de la Academia Nova. Respondes solo con la información de las notas.\nSi la respuesta no está en las notas, di «No tengo ese dato» y sugiere escribir a la secretaría.\nResponde en español, en máximo 3 líneas.',
+    model: 'llama-3.3-70b-versatile', temperature: 0.1, tools: ['buscar_conocimiento'],
+    knowledge: 'Academia Nova: curso de Introducción a la Inteligencia Artificial.\n\nHorario: martes y jueves de 6:00 pm a 8:00 pm, en el aula 204 del edificio B. El curso dura 8 semanas e inicia el 3 de febrero.\n\nCosto: la matrícula cuesta $1.200.000 COP. Los egresados de la Academia tienen 15 % de descuento. Se puede pagar en dos cuotas: la primera al matricularse y la segunda en la semana 4.\n\nRequisitos: no se necesita experiencia en programación. Se recomienda llevar portátil con acceso a internet.\n\nCertificado: se entrega un certificado digital a quienes asistan al 80 % de las clases y presenten el proyecto final.\n\nContacto: secretaria@academianova.example, de lunes a viernes de 8:00 am a 5:00 pm.'
+  }
+};

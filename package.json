@@ -1,0 +1,17 @@
+{
+  "name": "agentes-short",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Taller de 2 horas: crea y configura agentes inteligentes (MADSI)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
