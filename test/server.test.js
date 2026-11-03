@@ -119,3 +119,19 @@ test('el modo Ollama obtiene el prompt y ejecuta herramientas por el servidor', 
   assert.strictEqual((await call('POST', '/api/tool', { config: cfg, name: 'calculadora', args: { expresion: '2*21' } }, ana)).data.result, '42');
   assert.match((await call('POST', '/api/tool', { config: cfg, name: 'clima', args: { ciudad: 'Cali' } }, ana)).data.result, /no está activada/);
 });
+
+test('el RAG extrae el texto de un PDF y rechaza lo que no es PDF', async () => {
+  const fs = require('node:fs');
+  const ana = (await call('POST', '/api/login', { username: 'ana', password: 'password1' })).cookie;
+  const send = (body, cookie) => fetch(base + '/api/extract-text', { method: 'POST', headers: { 'Content-Type': 'application/pdf', ...(cookie ? { Cookie: cookie } : {}) }, body });
+  assert.strictEqual((await send(fs.readFileSync(__dirname + '/fixtures/reglamento.pdf'))).status, 401);
+  const ok = await send(fs.readFileSync(__dirname + '/fixtures/reglamento.pdf'), ana);
+  const data = await ok.json();
+  assert.strictEqual(ok.status, 200);
+  assert.match(data.text, /matrícula cuesta 1\.200\.000/);
+  assert.match(data.text, /Segunda página/);
+  assert.strictEqual(data.pages, 2);
+  assert.strictEqual((await send(Buffer.from('esto no es un pdf'), ana)).status, 400);
+  const rag = await call('POST', '/api/rag-test', { knowledge: data.text, query: 'matrícula cuesta', k: 2, chunk: 300 }, ana);
+  assert.match(rag.data.chunks[0].text, /matrícula/);
+});

@@ -40,7 +40,7 @@ window.MODULES = [
     ],
     steps: [
       'Carga el agente «Tutor de agentes de IA» y léelo: identifica rol, tono, formato y límites.',
-      'Haz la misma pregunta con temperatura 0 y con 1.2. Compara las dos respuestas.',
+      'En la sección 1 (Modelo y temperatura) usa los botones Preciso y Creativo: haz la misma pregunta con cada uno, lee la explicación que aparece y compara.',
       'Cambia el prompt para que responda solo con 3 viñetas y pruébalo.',
       'Elige el dominio de tu agente final (por ejemplo: clínica, tienda, universidad, finanzas) y escribe su primer prompt.'
     ],
@@ -54,13 +54,13 @@ window.MODULES = [
       ['Llamada a herramientas', 'El modelo no ejecuta nada. Pide «usa la calculadora con esto»; el servidor la ejecuta y le devuelve el resultado para que continúe.'],
       ['La descripción manda', 'El modelo elige la herramienta por su descripción. Una descripción vaga produce un uso erróneo o ninguno.'],
       ['Traza', 'En el Constructor ves cada paso: herramienta, argumentos y resultado. Si el agente falla, la traza dice dónde.'],
-      ['Herramientas del taller', 'Calculadora · Fecha y hora · Clima actual (datos reales de Open-Meteo) · Buscar en mis notas.']
+      ['Herramientas y APIs', 'Calculadora · Fecha y hora · Clima actual (Open-Meteo) · y hasta 3 APIs propias: tú escribes la URL con {parámetros} y el agente decide cuándo llamarla.']
     ],
     steps: [
       'Carga «Asistente con herramientas». Repite las dos preguntas del módulo 1 y compara.',
       'Pregunta: «¿Qué clima hace hoy en Bucaramanga y en Medellín? ¿Cuál es más caliente?».',
       'Desactiva una herramienta y repite la pregunta. ¿Qué hace el agente sin ella?',
-      'Activa en tu agente las herramientas que necesita y pruébalas con 2 preguntas.'
+      'En la sección 4 activa las herramientas que tu agente necesita y agrega una API propia (por ejemplo la de edad según el nombre), pruébala con el botón Probar y luego pregúntale algo que la requiera.'
     ],
     preset: 'herramientas',
     check: ['Vi la traza de una llamada a herramienta', 'Comparé el agente con y sin herramienta', 'Mi agente usa al menos una herramienta']
@@ -77,8 +77,8 @@ window.MODULES = [
     steps: [
       'Carga «Agente con notas» y pregúntale por el horario y por el costo de un curso.',
       'Pregunta algo que NO está en las notas. ¿Lo reconoce o lo inventa?',
-      'Pega en tu agente una página de tus propias notas o reglamento y haz 3 preguntas.',
-      'Borra la conversación y pregunta por algo que dijiste antes: así verás la memoria.'
+      'En la sección 5 (RAG) carga un PDF o un .md tuyo (un reglamento, un apunte), usa «Probar la búsqueda» para ver qué fragmentos encuentra y haz 3 preguntas al agente.',
+      'En la sección 3 (Memoria) elige «Sin memoria», luego «Ventana de 4» y «Completa». Dile tu nombre, charla un poco y pregunta cómo te llamas: lo atenuado en el chat es lo que ya olvidó.'
     ],
     preset: 'notas',
     check: ['Mi agente responde con datos de mis notas', 'Probé una pregunta que no está en las notas', 'Entendí cómo recuerda la conversación']
@@ -107,22 +107,22 @@ window.PRESETS = {
   basico: {
     name: 'Asistente básico',
     system: 'Eres un asistente. Responde en español, de forma breve.',
-    model: 'llama-3.3-70b-versatile', temperature: 0.7, tools: [], knowledge: ''
+    model: 'llama-3.3-70b-versatile', temperature: 0.7, maxTokens: 700, memory: { mode: 'window', size: 6 }, tools: [], knowledge: ''
   },
   tutor: {
     name: 'Tutor de agentes de IA',
     system: 'Eres un tutor de agentes de IA para estudiantes universitarios.\nTarea: explicar conceptos de forma clara, con un ejemplo corto.\nTono: cercano y profesional.\nFormato: máximo 4 líneas por respuesta; si hay pasos, usa una lista numerada.\nLímites: si la pregunta no trata de agentes, modelos de lenguaje o programación, dilo con amabilidad y redirige al tema.',
-    model: 'llama-3.3-70b-versatile', temperature: 0.3, tools: [], knowledge: ''
+    model: 'llama-3.3-70b-versatile', temperature: 0.3, maxTokens: 500, memory: { mode: 'window', size: 8 }, tools: [], knowledge: ''
   },
   herramientas: {
     name: 'Asistente con herramientas',
     system: 'Eres un asistente práctico. Responde en español y muestra siempre el dato que obtuviste.\nUsa la calculadora para cualquier cuenta, la herramienta de clima para el tiempo y la de fecha y hora para el día y la hora.\nNo adivines números: si una herramienta falla, dilo.',
-    model: 'llama-3.3-70b-versatile', temperature: 0.1, tools: ['calculadora', 'fecha_hora', 'clima'], knowledge: ''
+    model: 'llama-3.3-70b-versatile', temperature: 0.1, maxTokens: 700, memory: { mode: 'window', size: 6 }, tools: ['calculadora', 'fecha_hora', 'clima'], knowledge: ''
   },
   notas: {
     name: 'Agente con notas',
     system: 'Eres el asistente de la Academia Nova. Respondes solo con la información de las notas.\nSi la respuesta no está en las notas, di «No tengo ese dato» y sugiere escribir a la secretaría.\nResponde en español, en máximo 3 líneas.',
-    model: 'llama-3.3-70b-versatile', temperature: 0.1, tools: ['buscar_conocimiento'],
+    model: 'llama-3.3-70b-versatile', temperature: 0.1, maxTokens: 500, memory: { mode: 'window', size: 6 }, rag: { enabled: true, k: 3, chunk: 600 }, tools: [],
     knowledge: 'Academia Nova: curso de Introducción a la Inteligencia Artificial.\n\nHorario: martes y jueves de 6:00 pm a 8:00 pm, en el aula 204 del edificio B. El curso dura 8 semanas e inicia el 3 de febrero.\n\nCosto: la matrícula cuesta $1.200.000 COP. Los egresados de la Academia tienen 15 % de descuento. Se puede pagar en dos cuotas: la primera al matricularse y la segunda en la semana 4.\n\nRequisitos: no se necesita experiencia en programación. Se recomienda llevar portátil con acceso a internet.\n\nCertificado: se entrega un certificado digital a quienes asistan al 80 % de las clases y presenten el proyecto final.\n\nContacto: secretaria@academianova.example, de lunes a viernes de 8:00 am a 5:00 pm.'
   }
 };

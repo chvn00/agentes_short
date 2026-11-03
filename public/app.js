@@ -41,7 +41,7 @@
 
   /* ---------- acceso: ingresar o crear cuenta ---------- */
   function showAuth(msg) {
-    document.body.classList.add('guest'); $('#who').hidden = true; nav.innerHTML = '';
+    document.body.classList.add('guest'); $('#who').hidden = true; nav.innerHTML = ''; document.body.classList.remove('menu');
     let mode = 'login';
     const draw = (err) => {
       view.innerHTML = `<section class="card auth"><img class="logoA" src="logo-usta.png" alt="Universidad Santo Tomás, Bucaramanga"><h1 style="font-size:24px">Taller de Agentes de IA</h1><p class="who2">Facultad de Ingeniería en Inteligencia Artificial<br>Dirige: <b>Dr.-Ing. Cesar Hernando Valencia Niño</b></p>
@@ -100,12 +100,13 @@
   setInterval(drawClock, 1000); drawClock();
 
   /* ---------- navegación ---------- */
-  const routes = () => [['inicio', 'Inicio'], ...window.MODULES.map(m => [m.id, modLabel(m)]), ['constructor', '🛠 Constructor'], ['recursos', 'Recursos'], ...(me && me.isAdmin ? [['admin', '👑 Administración']] : [])];
+  const routes = () => [['inicio', 'Inicio', '🏠'], ...window.MODULES.map(m => [m.id, modLabel(m), m.icon]), ['constructor', 'Constructor de agentes', '🛠️'], ['recursos', 'Recursos', '🔗'], ...(me && me.isAdmin ? [['admin', 'Administración', '👑']] : [])];
   function drawNav(cur) {
-    nav.innerHTML = routes().map(([id, label]) => {
+    nav.innerHTML = routes().map(([id, label, icon]) => {
       const m = window.MODULES.find(x => x.id === id);
-      return `<a href="#${id}" class="${id === cur ? 'on' : ''}">${esc(label)}${m && moduleDone(m) ? '<span class="ok">✓</span>' : ''}</a>`;
+      return `<a href="#${id}" class="${id === cur ? 'on' : ''}"><i>${icon}</i><span>${esc(label)}</span>${m && moduleDone(m) ? '<em class="ok">✓</em>' : ''}</a>`;
     }).join('');
+    document.body.classList.remove('menu');
   }
   function route() {
     if (!me) return;
@@ -121,6 +122,8 @@
     window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
+  $('#burger').onclick = () => document.body.classList.toggle('menu');
+  $('#scrim').onclick = () => document.body.classList.remove('menu');
 
   /* ---------- inicio ---------- */
   function home() {
@@ -332,36 +335,84 @@
     }).join('');
   }
 
+  const slugApi = n => String(n || '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
+  const apiParams = url => [...new Set([...String(url || '').matchAll(/\{([a-z_][a-z0-9_]{0,19})\}/gi)].map(m => m[1]))].slice(0, 4);
+  const API_EXAMPLES = {
+    edad: { name: 'edad_por_nombre', description: 'Estima la edad promedio de las personas que tienen un nombre de pila. El parámetro nombre es el nombre en minúsculas.', url: 'https://api.agify.io/?name={nombre}' },
+    ciudad: { name: 'ciudad', description: 'Busca una ciudad y devuelve su país, latitud, longitud, altitud y población.', url: 'https://geocoding-api.open-meteo.com/v1/search?name={ciudad}&count=1&language=es' },
+    github: { name: 'github_usuario', description: 'Perfil público de un usuario de GitHub: nombre, repositorios públicos y seguidores.', url: 'https://api.github.com/users/{usuario}' },
+    vacio: { name: '', description: '', url: '' }
+  };
+
   function builder() {
     const cfg = Object.assign({}, window.PRESETS.basico, store.get('cfg', {}));
+    cfg.apis = Array.isArray(cfg.apis) ? cfg.apis : [];
+    cfg.memory = Object.assign({ mode: 'window', size: 6 }, cfg.memory);
+    cfg.rag = Object.assign({ enabled: (cfg.tools || []).includes('buscar_conocimiento'), k: 3, chunk: 600 }, cfg.rag);
+    cfg.maxTokens = cfg.maxTokens || 700;
+    cfg.tools = (cfg.tools || []).filter(t => t !== 'buscar_conocimiento');
     let chat = store.get('chat', []);
     let provider = settings().provider === 'ollama' ? 'ollama' : 'groq';
     const save = () => store.set('cfg', cfg);
-    const toolList = info.tools.length ? info.tools : [];
+    const toolList = info.tools.filter(t => t.id !== 'buscar_conocimiento');
     const noKey = !me.hasKey && !info.sharedKey;
 
     view.innerHTML = `
       <div id="warn"></div>
       <div class="builder">
-        <section class="panel"><h2>Configura tu agente</h2>
+        <section class="panel cfg"><h2>Configura tu agente</h2>
           <div class="field"><label for="mine">Mis agentes guardados</label><div class="row"><select id="mine" style="flex:1;min-width:0"><option value="">— ninguno —</option></select><button class="btn sm" id="mineSave" type="button">Guardar</button><button class="btn sm sec" id="mineDel" type="button">Borrar</button></div><small id="mineMsg">Se guardan en tu cuenta.</small></div>
           <div class="field"><label for="preset">Empezar desde un ejemplo</label><select id="preset"><option value="">— elige —</option>${Object.entries(window.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.name)}</option>`).join('')}</select></div>
-          <div class="field"><label for="prov">Dónde corre el modelo</label><select id="prov"><option value="groq">En la nube · Groq (tu API key)</option><option value="ollama">En mi equipo · Ollama</option></select></div>
-          <div class="field"><label for="name">Nombre</label><input type="text" id="name" maxlength="40"></div>
-          <div class="field"><label for="system">Instrucciones (rol, tarea, tono, formato, límites)</label><textarea id="system" rows="7" maxlength="3000"></textarea></div>
-          <div class="field"><label for="model" id="modelLbl">Modelo</label><select id="model"></select></div>
-          <div class="field"><label for="temp">Temperatura: <b id="tv"></b></label><input type="range" id="temp" min="0" max="1.5" step="0.1" style="width:100%"></div>
-          <div class="field"><label>Herramientas</label>${toolList.map(t => `<label class="tool"><input type="checkbox" data-tool="${esc(t.id)}"><div><b>${esc(t.label)}</b><span>${esc(t.description)}</span></div></label>`).join('')}</div>
-          <div class="field"><label for="kn">Conocimiento (tus notas)</label><textarea id="kn" rows="5" maxlength="20000" placeholder="Pega aquí texto que el agente deba consultar."></textarea><small>Si activas «Buscar en mis notas», el agente lo consulta; si no, se le envía como contexto.</small></div>
+
+          <details class="sec" open><summary><span class="n">1</span>Modelo y temperatura</summary><div class="body">
+            <div class="field"><label for="prov">Dónde corre el modelo</label><select id="prov"><option value="groq">En la nube · Groq (tu API key)</option><option value="ollama">En mi equipo · Ollama</option></select></div>
+            <div class="field"><label for="model" id="modelLbl">Modelo</label><select id="model"></select></div>
+            <div class="field"><label for="temp">Temperatura: <b id="tv"></b></label><input type="range" id="temp" min="0" max="1.5" step="0.1" style="width:100%"><div class="scale"><span>0 · preciso y repetible</span><span>1.5 · creativo y variable</span></div>
+              <div class="row" style="margin-top:6px"><button type="button" class="btn sm sec" data-temp="0">Preciso · 0</button><button type="button" class="btn sm sec" data-temp="0.5">Equilibrado · 0.5</button><button type="button" class="btn sm sec" data-temp="1.2">Creativo · 1.2</button></div>
+              <div class="explain" id="tempExp"></div></div>
+            <div class="field"><label for="maxtok">Longitud máxima de la respuesta: <b id="mtv"></b> tokens</label><input type="range" id="maxtok" min="100" max="1500" step="100" style="width:100%"><small>Un token son unas 3/4 de palabra.</small></div>
+          </div></details>
+
+          <details class="sec" open><summary><span class="n">2</span>Instrucciones</summary><div class="body">
+            <div class="field"><label for="name">Nombre</label><input type="text" id="name" maxlength="40"></div>
+            <div class="field"><label for="system">Rol, tarea, tono, formato y límites</label><textarea id="system" rows="7" maxlength="3000"></textarea></div>
+          </div></details>
+
+          <details class="sec" open><summary><span class="n">3</span>Memoria</summary><div class="body">
+            <div class="field"><label for="memMode">Qué recuerda de la conversación</label><select id="memMode"><option value="none">Sin memoria: solo ve tu último mensaje</option><option value="window">Ventana: los últimos mensajes</option><option value="full">Completa: hasta 20 mensajes</option></select></div>
+            <div class="field" id="memSizeBox"><label for="memSize">Mensajes que recuerda: <b id="msv"></b></label><input type="range" id="memSize" min="2" max="20" step="2" style="width:100%"></div>
+            <div class="explain" id="memExp"></div>
+            <small>Prueba: dile tu nombre y, tres mensajes después, pregunta «¿cómo me llamo?». En el chat, lo que el agente ya olvidó aparece atenuado.</small>
+          </div></details>
+
+          <details class="sec" open><summary><span class="n">4</span>Herramientas y APIs</summary><div class="body">
+            <div class="field"><label>Herramientas listas para usar</label>${toolList.map(t => `<label class="tool"><input type="checkbox" data-tool="${esc(t.id)}"><div><b>${esc(t.label)}</b><span>${esc(t.description)}</span></div></label>`).join('')}</div>
+            <div class="field"><label>Mis APIs <small style="font-weight:400">(hasta 3, públicas y sin clave)</small></label><div id="apis"></div>
+              <div class="row" style="margin-top:6px"><select id="apiEx" style="flex:1;min-width:0"><option value="">+ Agregar API…</option><option value="edad">Ejemplo: edad según el nombre</option><option value="ciudad">Ejemplo: datos de una ciudad</option><option value="github">Ejemplo: usuario de GitHub</option><option value="vacio">En blanco</option></select></div>
+              <small>Escribe la URL con los datos variables entre llaves, por ejemplo <code>{nombre}</code>. El agente decide cuándo llamarla y con qué valor. Solo https.</small></div>
+          </div></details>
+
+          <details class="sec" open><summary><span class="n">5</span>Conocimiento (RAG)</summary><div class="body">
+            <label class="tool" style="padding-top:0"><input type="checkbox" id="ragOn"><div><b>Activar RAG</b><span>El agente busca en tus documentos antes de responder y cita lo que encuentra. Sin RAG, el texto se le envía completo como contexto.</span></div></label>
+            <div class="field"><label for="kn">Tus documentos</label><textarea id="kn" rows="5" maxlength="60000" placeholder="Pega aquí el texto o carga archivos: se juntan todos en este cuadro."></textarea>
+              <div class="row" style="margin-top:6px;align-items:center"><button class="btn sm sec" id="knFile" type="button">Cargar PDF, .md, .txt o .csv</button><button class="btn sm sec" id="knClear" type="button">Vaciar</button><input type="file" id="knFileIn" accept=".pdf,.md,.markdown,.txt,.csv,application/pdf,text/markdown,text/plain,text/csv" multiple hidden><small id="knCount"></small></div><small id="knMsg" style="display:block;margin-top:4px"></small></div>
+            <div class="grid2">
+              <div class="field"><label for="ragK">Fragmentos a recuperar: <b id="rkv"></b></label><input type="range" id="ragK" min="1" max="5" step="1" style="width:100%"></div>
+              <div class="field"><label for="ragChunk">Tamaño de fragmento</label><select id="ragChunk"><option value="300">Pequeño (300)</option><option value="600">Mediano (600)</option><option value="1000">Grande (1000)</option></select></div>
+            </div>
+            <div class="field"><label for="ragQ">Probar la búsqueda</label><div class="row"><input type="text" id="ragQ" placeholder="Escribe una pregunta de prueba" style="flex:1;min-width:0"><button class="btn sm" id="ragGo" type="button">Buscar</button></div><div id="ragOut"></div></div>
+          </div></details>
+
           <div class="row"><button class="btn sm" id="dlJson" type="button">Descargar .json</button><button class="btn sm sec" id="dlPy" type="button">Descargar Python</button><button class="btn sm sec" id="imp" type="button">Cargar .json</button><input type="file" id="impFile" accept=".json,application/json" hidden></div>
         </section>
         <section class="panel chat"><div class="row" style="justify-content:space-between;align-items:center"><h2 id="title" style="margin:0"></h2><button class="btn sm sec" id="clear" type="button">Nueva conversación</button></div>
+          <div class="sumry" id="sumry"></div>
           <div class="msgs" id="msgs" aria-live="polite"></div>
           <form class="composer" id="form"><input type="text" id="q" placeholder="Escribe un mensaje…" maxlength="2000" autocomplete="off"><button class="btn" id="send" type="submit">Enviar</button></form>
         </section>
       </div>`;
 
-    const f = {}; ['preset', 'prov', 'name', 'system', 'model', 'modelLbl', 'temp', 'tv', 'kn', 'msgs', 'form', 'q', 'send', 'title', 'warn', 'mine', 'mineMsg'].forEach(id => f[id] = $('#' + id));
+    const f = {}; ['preset', 'prov', 'name', 'system', 'model', 'modelLbl', 'temp', 'tv', 'maxtok', 'mtv', 'memMode', 'memSize', 'msv', 'memSizeBox', 'apis', 'apiEx', 'ragOn', 'kn', 'knCount', 'ragK', 'rkv', 'ragChunk', 'ragQ', 'ragOut', 'tempExp', 'memExp', 'knMsg', 'msgs', 'form', 'q', 'send', 'title', 'warn', 'mine', 'mineMsg', 'sumry'].forEach(id => f[id] = $('#' + id));
 
     function drawWarn() {
       f.warn.innerHTML = provider === 'groq' && noKey ? '<div class="notice">Todavía no guardaste tu API key de Groq. Hazlo en el <a href="#m0">módulo 0, paso 2</a>, o cambia a «Ollama».</div>'
@@ -378,20 +429,124 @@
         f.model.innerHTML = info.models.map(m => `<option ${m === cfg.model ? 'selected' : ''}>${esc(m)}</option>`).join('');
       }
     }
+    function drawSummary() {
+      const mem = cfg.memory.mode === 'none' ? 'sin memoria' : cfg.memory.mode === 'full' ? 'memoria completa' : `memoria de ${cfg.memory.size} mensajes`;
+      const nt = cfg.tools.length + cfg.apis.filter(a => a.name && a.url).length;
+      f.sumry.innerHTML = [`Temperatura ${cfg.temperature}`, mem, `${nt} herramienta${nt === 1 ? '' : 's'}`, cfg.rag.enabled ? `RAG activo (${cfg.rag.k} fragmentos)` : 'sin RAG'].map(t => `<span>${esc(t)}</span>`).join('');
+    }
+    function drawApis() {
+      f.apis.innerHTML = cfg.apis.map((a, i) => `<div class="apirow" data-i="${i}">
+        <input type="text" data-k="name" maxlength="30" placeholder="Nombre corto (ej. paises)" value="${esc(a.name)}">
+        <input type="text" data-k="description" maxlength="300" placeholder="Qué hace (el modelo lo lee para decidir cuándo usarla)" value="${esc(a.description)}">
+        <input type="text" data-k="url" maxlength="500" placeholder="https://… con {parametros}, ej. https://api.agify.io/?name={nombre}" value="${esc(a.url)}">
+        <div class="aprm">Parámetros: <b>${apiParams(a.url).map(p => '{' + p + '}').join(' ') || 'ninguno'}</b></div>
+        <div class="row"><button type="button" class="btn sm sec" data-act="test">Probar</button><button type="button" class="btn sm sec" data-act="del">Quitar</button></div><pre class="aptest" hidden></pre></div>`).join('');
+    }
+    const TEMP_TXT = t => t <= 0.2 ? ['Casi determinista', 'Ante la misma pregunta responde casi igual. Ideal para cálculos, datos exactos y para usar herramientas.']
+      : t <= 0.7 ? ['Equilibrado', 'Respuestas naturales y consistentes. Es un buen punto de partida para la mayoría de agentes.']
+      : t <= 1.1 ? ['Variado', 'La redacción cambia entre intentos. Sirve para ideas y textos, pero empieza a perder precisión.']
+      : ['Muy creativo', 'Cada respuesta es distinta y crece el riesgo de inventar datos o salirse del tema. Úsalo solo para lluvia de ideas.'];
+    const MEM_TXT = m => m.mode === 'none' ? ['Sin memoria', 'Cada mensaje se responde como si fuera el primero: el agente no recuerda lo anterior. Sirve para consultas sueltas y es lo más barato en tokens.']
+      : m.mode === 'full' ? ['Memoria completa', 'Recuerda hasta 20 mensajes. Mantiene bien el hilo de la conversación, pero gasta más tokens y puede arrastrar temas viejos.']
+      : ['Memoria de ventana', `Recuerda solo los últimos ${m.size} mensajes (los tuyos y los suyos). Lo anterior se olvida. Equilibra contexto y costo.`];
+    function drawExplain() {
+      const [tn, tt] = TEMP_TXT(cfg.temperature), [mn, mt] = MEM_TXT(cfg.memory);
+      f.tempExp.innerHTML = `<b>${tn}.</b> ${tt}`; f.memExp.innerHTML = `<b>${mn}.</b> ${mt}`;
+    }
+    const remembers = () => cfg.memory.mode === 'none' ? 0 : (cfg.memory.mode === 'full' ? 20 : cfg.memory.size) - 1;
     function fill() {
       f.prov.value = provider; fillModels(); drawWarn();
-      f.name.value = cfg.name; f.system.value = cfg.system; f.temp.value = cfg.temperature; f.tv.textContent = cfg.temperature; f.kn.value = cfg.knowledge || '';
-      view.querySelectorAll('[data-tool]').forEach(c => c.checked = (cfg.tools || []).includes(c.dataset.tool)); f.title.textContent = cfg.name || 'Mi agente';
+      f.name.value = cfg.name; f.system.value = cfg.system; f.temp.value = cfg.temperature; f.tv.textContent = cfg.temperature;
+      f.maxtok.value = cfg.maxTokens; f.mtv.textContent = cfg.maxTokens;
+      f.memMode.value = cfg.memory.mode; f.memSize.value = cfg.memory.size; f.msv.textContent = cfg.memory.size; f.memSizeBox.hidden = cfg.memory.mode !== 'window';
+      view.querySelectorAll('[data-tool]').forEach(c => c.checked = (cfg.tools || []).includes(c.dataset.tool));
+      drawApis();
+      f.ragOn.checked = cfg.rag.enabled; f.kn.value = cfg.knowledge || ''; f.ragK.value = cfg.rag.k; f.rkv.textContent = cfg.rag.k; f.ragChunk.value = String(cfg.rag.chunk);
+      f.knCount.textContent = (cfg.knowledge || '').length + ' / 60000 caracteres'; f.ragOut.innerHTML = '';
+      f.title.textContent = cfg.name || 'Mi agente'; drawSummary(); drawExplain(); drawChat();
     }
     function read() {
-      cfg.name = f.name.value; cfg.system = f.system.value; cfg.temperature = parseFloat(f.temp.value); cfg.knowledge = f.kn.value;
+      cfg.name = f.name.value; cfg.system = f.system.value; cfg.temperature = parseFloat(f.temp.value); cfg.maxTokens = parseInt(f.maxtok.value, 10);
+      cfg.knowledge = f.kn.value;
       if (provider === 'groq') cfg.model = f.model.value; else if (f.model.value !== (settings().ollamaModel || '')) setSettings({ ollamaModel: f.model.value });
+      cfg.memory = { mode: f.memMode.value, size: parseInt(f.memSize.value, 10) };
+      cfg.rag = { enabled: f.ragOn.checked, k: parseInt(f.ragK.value, 10), chunk: parseInt(f.ragChunk.value, 10) };
       cfg.tools = [...view.querySelectorAll('[data-tool]')].filter(c => c.checked).map(c => c.dataset.tool);
-      f.tv.textContent = cfg.temperature; f.title.textContent = cfg.name || 'Mi agente'; save();
+      f.tv.textContent = cfg.temperature; f.mtv.textContent = cfg.maxTokens; f.msv.textContent = cfg.memory.size; f.rkv.textContent = cfg.rag.k;
+      f.memSizeBox.hidden = cfg.memory.mode !== 'window'; f.knCount.textContent = cfg.knowledge.length + ' / 60000 caracteres';
+      const sig = cfg.memory.mode + cfg.memory.size;
+      f.title.textContent = cfg.name || 'Mi agente'; drawSummary(); drawExplain(); save();
+      if (sig !== lastSig) { lastSig = sig; drawChat(); }
     }
-    view.querySelectorAll('.field input,.field select,.field textarea').forEach(i => { if (!['preset', 'prov', 'mine'].includes(i.id)) i.addEventListener('input', read); });
+    let lastSig = '';
+    view.querySelectorAll('.cfg input,.cfg select,.cfg textarea').forEach(i => { if (!['preset', 'prov', 'mine', 'apiEx', 'ragQ', 'knFileIn', 'impFile'].includes(i.id) && !i.closest('.apirow')) { i.addEventListener('input', read); i.addEventListener('change', read); } });
+    view.querySelectorAll('[data-temp]').forEach(b => b.onclick = () => { f.temp.value = b.dataset.temp; read(); });
     f.prov.onchange = () => { provider = f.prov.value; setSettings({ provider }); fillModels(); drawWarn(); };
-    f.preset.onchange = () => { if (f.preset.value) { Object.assign(cfg, window.PRESETS[f.preset.value]); save(); fill(); chat = []; store.set('chat', chat); drawChat(); } f.preset.value = ''; };
+    f.preset.onchange = () => { if (f.preset.value) { setCfg(window.PRESETS[f.preset.value]); chat = []; store.set('chat', chat); drawChat(); } f.preset.value = ''; };
+    function setCfg(o) {
+      const c = JSON.parse(JSON.stringify(o));
+      Object.assign(cfg, window.PRESETS.basico, c);
+      cfg.apis = Array.isArray(c.apis) ? c.apis : []; cfg.memory = Object.assign({ mode: 'window', size: 6 }, c.memory); cfg.maxTokens = c.maxTokens || 700;
+      cfg.rag = Object.assign({ enabled: (c.tools || []).includes('buscar_conocimiento'), k: 3, chunk: 600 }, c.rag);
+      cfg.tools = (c.tools || []).filter(t => t !== 'buscar_conocimiento'); save(); fill();
+    }
+
+    /* APIs propias */
+    f.apiEx.onchange = () => {
+      const k = f.apiEx.value; f.apiEx.value = ''; if (!k) return;
+      if (cfg.apis.length >= 3) return alert('Máximo 3 APIs por agente.');
+      cfg.apis.push(Object.assign({}, API_EXAMPLES[k])); save(); drawApis(); drawSummary();
+    };
+    f.apis.addEventListener('input', e => {
+      const row = e.target.closest('.apirow'); if (!row) return; const a = cfg.apis[+row.dataset.i];
+      a[e.target.dataset.k] = e.target.value; if (e.target.dataset.k === 'url') row.querySelector('.aprm b').textContent = apiParams(a.url).map(p => '{' + p + '}').join(' ') || 'ninguno';
+      save(); drawSummary();
+    });
+    f.apis.addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) return; const row = b.closest('.apirow'), i = +row.dataset.i, a = cfg.apis[i];
+      if (b.dataset.act === 'del') { cfg.apis.splice(i, 1); save(); drawApis(); drawSummary(); return; }
+      const out = row.querySelector('.aptest'); out.hidden = false;
+      if (!slugApi(a.name) || !/^https:\/\//i.test(a.url)) { out.textContent = 'Escribe un nombre y una URL que empiece por https://'; return; }
+      const args = {}; for (const p of apiParams(a.url)) { const v = prompt(`Valor de prueba para {${p}}:`); if (v === null) { out.hidden = true; return; } args[p] = v; }
+      out.textContent = 'Llamando a la API…';
+      try { const r = await api('/api/tool', 'POST', { config: cfg, name: 'api_' + slugApi(a.name), args }); out.textContent = r.result.slice(0, 600); } catch (er) { out.textContent = er.message; }
+    });
+
+    /* RAG: archivo y prueba de búsqueda */
+    $('#knFile').onclick = () => $('#knFileIn').click();
+    $('#knClear').onclick = () => { f.kn.value = ''; f.knMsg.textContent = ''; read(); };
+    $('#knFileIn').onchange = async e => {
+      const files = [...e.target.files]; e.target.value = ''; const notes = [];
+      for (const file of files) {
+        f.knMsg.textContent = `Leyendo ${file.name}…`;
+        try {
+          let text;
+          if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+            if (file.size > 10 * 1024 * 1024) throw new Error('pesa más de 10 MB');
+            const res = await fetch('/api/extract-text', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file });
+            const d = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(d.error || 'no pude leerlo');
+            text = d.text; notes.push(`${file.name}: ${d.pages} página${d.pages === 1 ? '' : 's'}`);
+          } else { text = await file.text(); notes.push(file.name); }
+          const room = 60000 - f.kn.value.length;
+          if (room <= 0) { notes.push('(sin espacio: el cuadro está lleno)'); break; }
+          const block = (f.kn.value ? '\n\n' : '') + `# ${file.name}\n\n` + text.trim();
+          f.kn.value += block.slice(0, room);
+          if (block.length > room) notes.push(`${file.name} se recortó por el límite de 60000 caracteres`);
+        } catch (er) { notes.push(`${file.name}: ${er.message}`); }
+      }
+      read(); f.knMsg.innerHTML = notes.map(esc).join(' · ');
+    };
+    $('#ragGo').onclick = async () => {
+      read(); const q = f.ragQ.value.trim(); if (!q) return;
+      f.ragOut.innerHTML = '<small>Buscando…</small>';
+      try {
+        const r = await api('/api/rag-test', 'POST', { knowledge: cfg.knowledge, query: q, k: cfg.rag.k, chunk: cfg.rag.chunk });
+        f.ragOut.innerHTML = `<small>${r.total} fragmento${r.total === 1 ? '' : 's'} en tus documentos</small>` + (r.chunks.length
+          ? r.chunks.map((c, n) => `<div class="frag"><b>#${n + 1} · ${c.score} de ${c.of} palabras</b>${esc(c.text)}</div>`).join('')
+          : '<div class="frag">Ningún fragmento se parece a esa pregunta. Con esta búsqueda por palabras clave, el agente tampoco encontraría nada.</div>');
+      } catch (er) { f.ragOut.innerHTML = `<small class="bad">${esc(er.message)}</small>`; }
+    };
 
     /* agentes guardados en la cuenta */
     let mine = [];
@@ -400,7 +555,7 @@
       try { mine = await api('/api/agents'); } catch (e) { mine = []; }
       f.mine.innerHTML = '<option value="">— ninguno —</option>' + mine.map(a => `<option ${a.name === select ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
     }
-    f.mine.onchange = () => { const a = mine.find(x => x.name === f.mine.value); if (a) { Object.assign(cfg, window.PRESETS.basico, a.config); save(); fill(); chat = []; store.set('chat', chat); drawChat(); note('Cargado: ' + a.name); } };
+    f.mine.onchange = () => { const a = mine.find(x => x.name === f.mine.value); if (a) { setCfg(a.config); chat = []; store.set('chat', chat); drawChat(); note('Cargado: ' + a.name); } };
     $('#mineSave').onclick = async () => {
       read(); const name = (cfg.name || '').trim(); if (!name) return note('Ponle un nombre al agente.');
       try { await api('/api/agents/' + encodeURIComponent(name), 'PUT', { config: cfg }); await loadMine(name); note('✓ Guardado en tu cuenta: ' + name); } catch (e) { note(e.message); }
@@ -420,8 +575,15 @@
     }
     function drawChat() {
       f.msgs.innerHTML = '';
-      if (!chat.length) f.msgs.appendChild(el('div', { class: 'empty' }, '<p><b>Escribe algo para probar tu agente.</b></p><p>Cambia las instrucciones o activa herramientas y vuelve a preguntar para ver la diferencia.</p>'));
-      chat.forEach(m => { if (m.role === 'user') bubble('user', m.content); else { trace(m.steps); bubble('bot', m.content); } });
+      if (!chat.length) f.msgs.appendChild(el('div', { class: 'empty' }, '<p><b>Escribe algo para probar tu agente.</b></p><p>Cambia temperatura, memoria, herramientas o RAG y vuelve a preguntar para ver la diferencia.</p>'));
+      const keepFrom = chat.length - remembers();
+      chat.forEach((m, i) => {
+        const n0 = f.msgs.childElementCount;
+        if (m.role === 'user') bubble('user', m.content); else { trace(m.steps); bubble('bot', m.content); }
+        if (i < keepFrom) [...f.msgs.children].slice(n0).forEach(e => e.classList.add('forgot'));
+      });
+      const lastForgot = [...f.msgs.querySelectorAll('.forgot')].pop();
+      if (lastForgot) lastForgot.after(el('div', { class: 'forgotNote' }, 'Lo atenuado ya no está en la memoria del agente'));
       f.msgs.scrollTop = f.msgs.scrollHeight;
     }
     $('#clear').onclick = () => { chat = []; store.set('chat', chat); drawChat(); };
@@ -431,11 +593,11 @@
       const model = settings().ollamaModel;
       if (!model) throw new Error('Conecta Ollama primero (módulo 0, paso 6).');
       const prep = await api('/api/prepare', 'POST', { config: cfg });
-      const messages = [{ role: 'system', content: prep.system }, ...history], steps = [];
+      const messages = [{ role: 'system', content: prep.system }, ...history.slice(-prep.historyLimit)], steps = [];
       for (let n = 0; n < 5; n++) {
         let r;
         try {
-          r = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', body: JSON.stringify({ model, messages, stream: false, tools: prep.tools.length ? prep.tools : undefined, options: { temperature: prep.temperature } }) });
+          r = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', body: JSON.stringify({ model, messages, stream: false, tools: prep.tools.length ? prep.tools : undefined, options: { temperature: prep.temperature, num_predict: prep.maxTokens } }) });
         } catch (e) { throw new Error('No pude conectar con Ollama. Revisa que esté abierto y los pasos 5 y 6 del módulo 0.'); }
         if (!r.ok) { const t = await r.text(); throw new Error(/does not support tools/i.test(t) ? 'Ese modelo no soporta herramientas. Usa llama3.2 o desactiva las herramientas.' : 'Ollama no pudo responder: ' + t.slice(0, 160)); }
         const msg = (await r.json()).message || {}, calls = msg.tool_calls || [];
@@ -473,7 +635,7 @@
     $('#dlPy').onclick = () => { read(); download(slug() + '.py', pythonScript(cfg, toolList, slug()), 'text/x-python'); };
     $('#imp').onclick = () => $('#impFile').click();
     $('#impFile').onchange = async e => {
-      try { const o = JSON.parse(await e.target.files[0].text()); Object.assign(cfg, { name: String(o.name || 'Mi agente'), system: String(o.system || ''), model: o.model || cfg.model, temperature: Number(o.temperature) || 0.4, tools: Array.isArray(o.tools) ? o.tools : [], knowledge: String(o.knowledge || '') }); save(); fill(); }
+      try { const o = JSON.parse(await e.target.files[0].text()); setCfg(Object.assign({}, o, { name: String(o.name || 'Mi agente'), system: String(o.system || ''), temperature: Number(o.temperature) || 0.4, knowledge: String(o.knowledge || '') })); }
       catch (err) { alert('El archivo no es una configuración válida.'); }
     };
     fill(); drawChat(); loadMine();
@@ -519,17 +681,35 @@ def calculadora(expresion):
     return "\\n\\n".join(ranking[:3]) or "No hay fragmentos relacionados."`
   };
   function pythonScript(cfg, toolList, slug) {
-    const sel = (cfg.tools || []).filter(t => PY[t]);
+    const sel = (cfg.tools || []).filter(t => PY[t] && t !== 'buscar_conocimiento');
+    const ragOn = !!(cfg.rag && cfg.rag.enabled);
+    const apis = (cfg.apis || []).filter(a => slugApi(a.name) && /^https:\/\//i.test(a.url));
+    const mem = cfg.memory || { mode: 'window', size: 6 };
+    const memN = mem.mode === 'none' ? 1 : mem.mode === 'full' ? 20 : mem.size;
     const defs = toolList.filter(t => sel.includes(t.id));
     const schemas = {
       calculadora: { properties: { expresion: { type: 'string' } }, required: ['expresion'] },
       fecha_hora: { properties: { zona: { type: 'string' } }, required: [] },
-      clima: { properties: { ciudad: { type: 'string' } }, required: ['ciudad'] },
-      buscar_conocimiento: { properties: { consulta: { type: 'string' } }, required: ['consulta'] }
+      clima: { properties: { ciudad: { type: 'string' } }, required: ['ciudad'] }
     };
     const tools = defs.map(t => ({ type: 'function', function: { name: t.id, description: t.description, parameters: Object.assign({ type: 'object' }, schemas[t.id]) } }));
+    if (ragOn) tools.push({ type: 'function', function: { name: 'buscar_conocimiento', description: 'Busca fragmentos relevantes en los documentos del usuario.', parameters: { type: 'object', properties: { consulta: { type: 'string' } }, required: ['consulta'] } } });
+    apis.forEach(a => { const ps = apiParams(a.url); tools.push({ type: 'function', function: { name: 'api_' + slugApi(a.name), description: a.description || a.name, parameters: { type: 'object', properties: Object.fromEntries(ps.map(p => [p, { type: 'string' }])), required: ps } } }); });
     const py = s => JSON.stringify(s);
-    const imports = ['import ast, json, math, operator, os, urllib.parse, urllib.request', 'from datetime import datetime', 'from zoneinfo import ZoneInfo', 'from groq import Groq  # pip install groq'].join('\n');
+    const fnNames = [...sel, ...(ragOn ? ['buscar_conocimiento'] : []), ...apis.map(a => 'api_' + slugApi(a.name))];
+    const ragCode = ragOn ? `def buscar_conocimiento(consulta):
+    palabras = {w for w in consulta.lower().split() if len(w) > 2}
+    partes = [p.strip()[i:i + ${cfg.rag.chunk}] for p in CONOCIMIENTO.split("\\n\\n") if p.strip() for i in range(0, len(p.strip()), ${cfg.rag.chunk})]
+    ranking = sorted(partes, key=lambda p: -len(palabras & set(p.lower().split())))
+    return "\\n\\n".join(ranking[:${cfg.rag.k}]) or "No hay fragmentos relacionados."` : '';
+    const apiCode = apis.length ? `def _api(plantilla, **datos):
+    url = plantilla
+    for clave, valor in datos.items():
+        url = url.replace("{" + clave + "}", urllib.parse.quote(str(valor), safe=""))
+    with urllib.request.urlopen(url, timeout=10) as r:
+        return r.read(60000).decode("utf-8", "ignore")[:2000]
+
+` + apis.map(a => `def api_${slugApi(a.name)}(**datos):\n    return _api(${py(a.url)}, **datos)`).join('\n\n') : '';
     return `"""${(cfg.name || 'Agente').replace(/"/g, "'")} · generado en el Taller de Agentes de IA
 Facultad de Ingeniería en Inteligencia Artificial · Universidad Santo Tomás.
 
@@ -538,24 +718,30 @@ Uso:
   export GROQ_API_KEY=tu-clave   (la creas gratis en https://console.groq.com/keys)
   python ${slug}.py
 """
-${imports}
+import ast, json, math, operator, os, urllib.parse, urllib.request
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from groq import Groq  # pip install groq
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = ${py(cfg.model)}
-TEMPERATURE = ${Number(cfg.temperature) || 0}
+TEMPERATURE = ${Number(cfg.temperature) || 0}      # 0 = preciso · 1.5 = creativo
+MAX_TOKENS = ${cfg.maxTokens || 700}
+MEMORIA = ${memN}      # cuántos mensajes recuerda (${mem.mode === 'none' ? 'sin memoria' : mem.mode === 'full' ? 'memoria completa' : 'ventana'})
 SYSTEM = ${py(cfg.system || 'Eres un asistente útil.')}
 CONOCIMIENTO = ${py(cfg.knowledge || '')}
-${cfg.knowledge && !sel.includes('buscar_conocimiento') ? 'SYSTEM += "\\n\\nNotas del usuario:\\n" + CONOCIMIENTO\n' : ''}
-${sel.map(t => PY[t]).join('\n\n')}
+${cfg.knowledge && !ragOn ? 'SYSTEM += "\\n\\nNotas del usuario:\\n" + CONOCIMIENTO\n' : ''}${ragOn ? 'SYSTEM += "\\n\\nPara preguntas sobre las notas del usuario, usa primero buscar_conocimiento."\n' : ''}
+${[...sel.map(t => PY[t]), ragCode, apiCode].filter(Boolean).join('\n\n')}
 
-FUNCIONES = {${sel.map(t => `"${t}": ${t}`).join(', ')}}
-TOOLS = json.loads(r'''${JSON.stringify(tools)}''')
+FUNCIONES = {${fnNames.map(t => `"${t}": ${t}`).join(', ')}}
+TOOLS = json.loads(r\'\'\'${JSON.stringify(tools)}\'\'\')
 
 
-def responder(messages):
+def responder(historial):
     """Bucle del agente: el modelo pide una herramienta, la ejecutamos y le devolvemos el resultado."""
+    messages = [{"role": "system", "content": SYSTEM}] + historial[-MEMORIA:]
     for _ in range(5):
-        kwargs = dict(model=MODEL, temperature=TEMPERATURE, messages=messages)
+        kwargs = dict(model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS, messages=messages)
         if TOOLS:
             kwargs["tools"] = TOOLS
         msg = client.chat.completions.create(**kwargs).choices[0].message
@@ -569,13 +755,13 @@ def responder(messages):
                 out = str(FUNCIONES[c.function.name](**json.loads(c.function.arguments or "{}")))
             except Exception as e:
                 out = f"Error: {e}"
-            print(f"  [herramienta] {c.function.name} -> {out}")
+            print(f"  [herramienta] {c.function.name} -> {out[:200]}")
             messages.append({"role": "tool", "tool_call_id": c.id, "content": out})
     return "Demasiados pasos sin respuesta."
 
 
 if __name__ == "__main__":
-    historial = [{"role": "system", "content": SYSTEM}]
+    historial = []
     print(${py((cfg.name || 'Agente') + ' listo. Escribe "salir" para terminar.')})
     while True:
         texto = input("Tú: ").strip()
@@ -587,7 +773,6 @@ if __name__ == "__main__":
         print("Agente:", respuesta)
 `;
   }
-
 
   /* ---------- arranque ---------- */
   (async function boot() {

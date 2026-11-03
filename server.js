@@ -2,7 +2,7 @@ const path = require('path');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { runAgent, runTool, prepare, TOOLS, MODELS } = require('./agent');
+const { runAgent, runTool, prepare, retrieve, TOOLS, MODELS } = require('./agent');
 const { createPool, init } = require('./db');
 const { SESSION_KEY, encrypt, decrypt, safeEqual } = require('./secrets');
 
@@ -35,11 +35,11 @@ async function sharedKey() {
 
 /* ---------- Groq ---------- */
 function makeLlm(apiKey) {
-  return async ({ model, temperature, messages, tools }) => {
+  return async ({ model, temperature, maxTokens, messages, tools }) => {
     const res = await fetch(`${GROQ_BASE}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, temperature, messages, tools, max_tokens: 1000 })
+      body: JSON.stringify({ model, temperature, messages, tools, max_tokens: maxTokens || 700 })
     });
     if (!res.ok) {
       const body = await res.text();
@@ -93,7 +93,7 @@ const clip = (o, max) => (o && typeof o === 'object' && !Array.isArray(o) && JSO
 /* ---------- aplicación ---------- */
 const app = express();
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '400kb' }));
 
 app.get('/api/info', wrap(async (req, res) => {
   res.json({
@@ -167,7 +167,7 @@ app.get('/api/agents', auth, wrap(async (req, res) => {
 
 app.put('/api/agents/:name', auth, wrap(async (req, res) => {
   const name = String(req.params.name).trim().slice(0, 40);
-  const config = clip(req.body && req.body.config, 30000);
+  const config = clip(req.body && req.body.config, 100000);
   if (!name || !config) return res.status(400).json({ error: 'Falta el nombre o la configuración.' });
   const { rows: mine } = await pool.query('SELECT COUNT(*)::int AS n FROM agents WHERE user_id = $1', [req.user.id]);
   const upd = await pool.query('UPDATE agents SET config = $1, updated_at = now() WHERE user_id = $2 AND name = $3', [config, req.user.id, name]);
@@ -259,6 +259,29 @@ admin.delete('/shared-key', wrap(async (req, res) => {
 app.use('/api/admin', admin);
 
 // Siempre revalidar: así un despliegue nuevo se ve al recargar y no queda una versión vieja en caché.
+/* Texto de un PDF para el RAG: el navegador lo envía tal cual y recibe el texto */
+const pdfBody = express.raw({ type: () => true, limit: '10mb' });
+app.post('/api/extract-text', auth, limiter(10, 60000, req => 'u' + req.user.id), pdfBody, wrap(async (req, res) => {
+  const buf = req.body;
+  if (!Buffer.isBuffer(buf) || buf.subarray(0, 5).toString('latin1') !== '%PDF-') return res.status(400).json({ error: 'El archivo no es un PDF válido.' });
+  let text, pages;
+  try {
+    const { extractText } = await import('unpdf');
+    const r = await extractText(new Uint8Array(buf), { mergePages: true });
+    text = String(r.text || ''); pages = r.totalPages;
+  } catch (e) { return res.status(400).json({ error: 'No pude leer ese PDF. Puede estar dañado o protegido con contraseña.' }); }
+  text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (text.length < 20) return res.status(422).json({ error: 'Ese PDF no tiene texto seleccionable (parece una imagen escaneada). Prueba con otro o pega el texto.' });
+  res.json({ text: text.slice(0, 60000), pages, truncated: text.length > 60000 });
+}));
+
+/* Prueba de recuperación (RAG): muestra qué fragmentos encontraría el agente */
+app.post('/api/rag-test', auth, limiter(60, 60000, req => 'u' + req.user.id), (req, res) => {
+  const { knowledge, query, k, chunk } = req.body || {};
+  const n = x => Math.round(Number(x));
+  res.json(retrieve(String(knowledge || '').slice(0, 60000), String(query || '').slice(0, 300), Math.min(5, Math.max(1, n(k) || 3)), Math.min(1000, Math.max(200, n(chunk) || 600))));
+});
+
 app.use(express.static(path.join(__dirname, 'public'), { setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
 app.use('/api', (req, res) => res.status(404).json({ error: 'No encontrado' }));
 app.use((req, res) => res.status(404).send('No encontrado'));

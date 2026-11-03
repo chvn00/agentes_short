@@ -42,14 +42,15 @@ El administrador no ve las API keys de los estudiantes, solo si la tienen.
 
 ## El Constructor de agentes
 
-Es el centro de la página. El estudiante configura:
+Es el centro de la página. Cada parte de un agente tiene su sección, con una explicación de lo que ocurre al cambiarla:
 
-- **Dónde corre el modelo** (Groq u Ollama), nombre e **instrucciones** (rol, tarea, tono, formato, límites)
-- **Modelo** (`llama-3.3-70b-versatile` o `llama-3.1-8b-instant` en Groq; el que tenga instalado en Ollama) y **temperatura**
-- **Herramientas**: calculadora, fecha y hora, clima actual (Open-Meteo, sin clave) y búsqueda en sus propias notas
-- **Conocimiento**: texto propio que el agente consulta
+1. **Modelo y temperatura:** Groq u Ollama, modelo, temperatura (con atajos Preciso, Equilibrado y Creativo y una explicación que cambia al mover el control) y longitud máxima de la respuesta.
+2. **Instrucciones:** nombre y prompt de sistema (rol, tarea, tono, formato, límites).
+3. **Memoria:** sin memoria, ventana de N mensajes o completa (hasta 20). En el chat, lo que el agente ya olvidó se ve atenuado.
+4. **Herramientas y APIs:** calculadora, fecha y hora, clima actual (Open-Meteo) y hasta **3 APIs propias**: se escribe una URL https con parámetros entre llaves (`https://api.agify.io/?name={nombre}`), el agente decide cuándo llamarla y hay un botón para probarla.
+5. **Conocimiento (RAG):** interruptor de RAG, documentos pegados o cargados desde archivos **PDF, .md, .txt o .csv** (se pueden cargar varios), número de fragmentos a recuperar, tamaño de fragmento y una **prueba de búsqueda** que muestra qué fragmentos encontraría el agente.
 
-y conversa con el agente viendo la **traza** de cada herramienta que usa (nombre, argumentos y resultado). Trae cuatro agentes de ejemplo, guarda agentes en la cuenta y permite descargar la configuración en `.json`, volver a cargarla y descargar un **script de Python** (Groq) que corre el mismo agente fuera de la página.
+Conversa con el agente viendo la **traza** de cada herramienta que usa (nombre, argumentos y resultado). Trae cuatro agentes de ejemplo, guarda agentes en la cuenta y permite descargar la configuración en `.json`, volver a cargarla y descargar un **script de Python** (Groq) con la misma temperatura, memoria, herramientas, APIs y RAG.
 
 ## Cómo funciona
 
@@ -102,6 +103,7 @@ Abre `http://localhost:3000`. Sin `DATABASE_URL` usa una base en memoria (las cu
 
 - No hay recuperación automática de contraseña: si alguien la olvida, el administrador le asigna una nueva desde la pestaña Administración.
 - Si cambias `APP_SECRET`, las sesiones se cierran y cada estudiante debe volver a guardar su API key.
-- La búsqueda en notas compara palabras clave, no significado (en el curso completo se ve RAG con embeddings).
+- La búsqueda del RAG compara palabras clave, no significado (en el curso completo se ve RAG con embeddings). Los PDF deben tener texto seleccionable: los escaneados como imagen no se leen. El texto total se limita a 60000 caracteres.
+- Las APIs propias solo admiten `https`, se bloquean las direcciones internas (localhost, redes privadas, `*.internal`) y se siguen hasta 3 redirecciones, validando cada destino. No admiten claves ni cabeceras: son para APIs públicas. Entre la comprobación del DNS y la petición hay una ventana mínima en la que un servidor malicioso podría cambiar de dirección; para un taller es un riesgo aceptado.
 - El modo Ollama depende del navegador: usa Chrome o Edge y autoriza el origen de la página en Ollama (paso 5 del módulo 0).
 - El script de Python exportado usa Groq; no genera la variante de Ollama.

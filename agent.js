@@ -62,26 +62,29 @@ function calc(src) {
 const norm = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const words = t => norm(t).split(/[^a-z0-9ñ]+/).filter(w => w.length > 2);
 
-function chunk(text) {
+function chunk(text, size = 600) {
   const out = [];
   for (const para of text.split(/\n\s*\n/)) {
     const p = para.trim();
     if (!p) continue;
-    for (let k = 0; k < p.length; k += 600) out.push(p.slice(k, k + 600));
+    for (let k = 0; k < p.length; k += size) out.push(p.slice(k, k + size));
   }
   return out;
 }
 
-function searchKnowledge(text, query, k = 3) {
+// Devuelve los fragmentos más parecidos a la consulta, con su puntaje (palabras en común).
+function retrieve(text, query, k = 3, size = 600) {
   const q = new Set(words(query));
-  if (!q.size) return [];
-  return chunk(text)
-    .map(c => { const w = new Set(words(c)); let hit = 0; q.forEach(x => { if (w.has(x)) hit++; }); return { c, hit }; })
-    .filter(x => x.hit > 0)
-    .sort((a, b) => b.hit - a.hit)
-    .slice(0, k)
-    .map(x => x.c);
+  const all = chunk(text, size);
+  if (!q.size) return { total: all.length, chunks: [] };
+  const chunks = all
+    .map(c => { const w = new Set(words(c)); let hit = 0; q.forEach(x => { if (w.has(x)) hit++; }); return { text: c, score: hit, of: q.size }; })
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k);
+  return { total: all.length, chunks };
 }
+const searchKnowledge = (text, query, k = 3, size = 600) => retrieve(text, query, k, size).chunks.map(x => x.text);
 
 // ---------- Clima (Open-Meteo, sin API key) ----------
 const WMO = {
@@ -129,54 +132,137 @@ const TOOLS = {
     def: fn('buscar_conocimiento', 'Busca fragmentos relevantes en las notas o documentos que cargó el usuario. Úsala antes de responder preguntas sobre ese material.', { consulta: { type: 'string', description: 'Palabras clave de lo que se busca' } }, ['consulta']),
     run: async ({ consulta }, ctx) => {
       if (!ctx.knowledge) return 'El usuario no ha cargado notas.';
-      const r = searchKnowledge(ctx.knowledge, String(consulta || ''));
+      const r = searchKnowledge(ctx.knowledge, String(consulta || ''), (ctx.rag && ctx.rag.k) || 3, (ctx.rag && ctx.rag.chunk) || 600);
       return r.length ? r.map((x, n) => `[${n + 1}] ${x}`).join('\n\n') : 'No hay fragmentos relacionados en las notas.';
     }
   }
 };
 
+// ---------- APIs propias (GET público con parámetros) ----------
+const net = require('net');
+const dns = require('dns').promises;
+
+function isPrivateIp(ip) {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+  }
+  const v = ip.toLowerCase();
+  if (v === '::1' || v === '::') return true;
+  const m = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(v);
+  if (m) return isPrivateIp(m[1]);
+  return /^f[cd]/.test(v) || /^fe[89ab]/.test(v);
+}
+
+// Solo https, nunca hacia direcciones internas (por ejemplo la base de datos de Railway).
+// Las redirecciones se siguen a mano (hasta 3) y cada destino se valida de nuevo.
+async function safeGet(rawUrl, { fetchImpl = fetch, lookup = dns.lookup } = {}) {
+  let url = rawUrl;
+  for (let hop = 0; hop <= 3; hop++) {
+    let u;
+    try { u = new URL(url); } catch { throw new Error('La URL no es válida'); }
+    if (u.protocol !== 'https:') throw new Error('Solo se permiten URLs https://');
+    if (u.username || u.password) throw new Error('La URL no puede llevar usuario ni contraseña');
+    const host = u.hostname.replace(/^\[|\]$/g, '');
+    if (host === 'localhost' || host.endsWith('.internal') || host.endsWith('.local')) throw new Error('Esa dirección no está permitida');
+    const addrs = net.isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+    if (!addrs.length || addrs.some(a => isPrivateIp(a.address))) throw new Error('Esa dirección no está permitida');
+    const res = await fetchImpl(u.href, { redirect: 'manual', signal: AbortSignal.timeout(8000), headers: { Accept: 'application/json, text/plain;q=0.9, */*;q=0.5', 'User-Agent': 'taller-agentes' } });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers && res.headers.get && res.headers.get('location');
+      if (!loc) throw new Error('La API respondió con una redirección sin destino');
+      url = new URL(loc, u).href; continue;
+    }
+    if (!res.ok) throw new Error(`La API respondió con error ${res.status}`);
+    const text = (await res.text()).slice(0, 60000);
+    try { return JSON.stringify(JSON.parse(text)); } catch { return text; }
+  }
+  throw new Error('La API redirige demasiadas veces');
+}
+
+const PARAM = /\{([a-z_][a-z0-9_]{0,19})\}/gi;
+const apiParams = url => [...new Set([...url.matchAll(PARAM)].map(m => m[1]))].slice(0, 4);
+
+function apiTool(a) {
+  const params = apiParams(a.url);
+  return {
+    label: a.name,
+    def: fn('api_' + a.name, a.description || `Consulta la API ${a.name}.`, Object.fromEntries(params.map(p => [p, { type: 'string', description: `Valor para {${p}}` }])), params),
+    run: async (args, ctx) => {
+      const url = a.url.replace(PARAM, (_, p) => encodeURIComponent(String(args[p] ?? '')));
+      return safeGet(url, { fetchImpl: ctx.fetch, lookup: ctx.lookup });
+    }
+  };
+}
+
 const str = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
+
+const clampInt = (v, lo, hi, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+const MEMORY_MODES = ['none', 'window', 'full'];
 
 function sanitizeConfig(raw = {}) {
   const t = Number(raw.temperature);
+  const rg = raw.rag && typeof raw.rag === 'object' ? raw.rag : {};
+  const tools = Array.isArray(raw.tools) ? [...new Set(raw.tools.filter(n => n in TOOLS))] : [];
+  // El RAG se enciende con su interruptor; la herramienta de búsqueda lo sigue.
+  const ragOn = rg.enabled !== undefined ? !!rg.enabled : tools.includes('buscar_conocimiento');
+  const apis = (Array.isArray(raw.apis) ? raw.apis : []).slice(0, 3).map(a => ({
+    name: str(a && a.name, 30).toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, ''),
+    description: str(a && a.description, 300),
+    url: str(a && a.url, 500).trim()
+  })).filter((a, i, all) => a.name && /^https:\/\//i.test(a.url) && all.findIndex(b => b.name === a.name) === i);
+  const mem = raw.memory && typeof raw.memory === 'object' ? raw.memory : {};
   return {
     name: str(raw.name, 40) || 'Mi agente',
     system: str(raw.system, 3000),
     model: MODELS.includes(raw.model) ? raw.model : MODELS[0],
     temperature: Number.isFinite(t) ? Math.min(1.5, Math.max(0, t)) : 0.4,
-    tools: Array.isArray(raw.tools) ? [...new Set(raw.tools.filter(n => n in TOOLS))] : [],
-    knowledge: str(raw.knowledge, 20000)
+    maxTokens: clampInt(raw.maxTokens, 100, 1500, 700),
+    tools: tools.filter(n => n !== 'buscar_conocimiento').concat(ragOn ? ['buscar_conocimiento'] : []),
+    knowledge: str(raw.knowledge, 60000),
+    rag: { enabled: ragOn, k: clampInt(rg.k, 1, 5, 3), chunk: clampInt(rg.chunk, 200, 1000, 600) },
+    memory: { mode: MEMORY_MODES.includes(mem.mode) ? mem.mode : 'window', size: clampInt(mem.size, 1, 20, 6) },
+    apis
   };
 }
 
-function sanitizeHistory(h) {
+// Cuántos mensajes recuerda el agente según su memoria.
+const historyLimit = cfg => cfg.memory.mode === 'none' ? 1 : cfg.memory.mode === 'full' ? 20 : cfg.memory.size;
+
+function sanitizeHistory(h, limit = 12) {
   return (Array.isArray(h) ? h : [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-    .slice(-12)
+    .slice(-limit)
     .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
 }
 
+// Herramientas disponibles para una configuración: las integradas activas y las APIs propias.
+function toolsFor(cfg) {
+  const out = {};
+  cfg.tools.forEach(n => { out[n] = TOOLS[n]; });
+  cfg.apis.forEach(a => { out['api_' + a.name] = apiTool(a); });
+  return out;
+}
+
 // Ejecuta el bucle del agente: modelo → herramienta → observación → modelo…
-async function runAgent({ config, history, llm, fetchImpl = fetch }) {
+async function runAgent({ config, history, llm, fetchImpl = fetch, lookup }) {
   const cfg = sanitizeConfig(config);
-  const messages = [{ role: 'system', content: buildSystem(cfg) }, ...sanitizeHistory(history)];
+  const messages = [{ role: 'system', content: buildSystem(cfg) }, ...sanitizeHistory(history, historyLimit(cfg))];
   if (messages.length < 2 || messages[messages.length - 1].role !== 'user') throw Object.assign(new Error('Falta el mensaje del usuario'), { status: 400 });
-  const tools = cfg.tools.map(n => TOOLS[n].def);
+  const avail = toolsFor(cfg);
+  const tools = Object.values(avail).map(t => t.def);
   const steps = [];
 
   for (let n = 0; n < MAX_STEPS; n++) {
-    const msg = await llm({ model: cfg.model, temperature: cfg.temperature, messages, tools: tools.length ? tools : undefined });
+    const msg = await llm({ model: cfg.model, temperature: cfg.temperature, maxTokens: cfg.maxTokens, messages, tools: tools.length ? tools : undefined });
     const calls = msg.tool_calls || [];
     if (!calls.length) return { reply: msg.content || 'No pude generar una respuesta, intenta de nuevo.', steps };
     messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
     for (const call of calls) {
       const name = call.function && call.function.name;
-      let args = {}, result;
+      let args = {};
       try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* argumentos mal formados */ }
-      try {
-        if (!TOOLS[name] || !cfg.tools.includes(name)) throw new Error(`La herramienta "${name}" no está activada`);
-        result = String(await TOOLS[name].run(args, { fetch: fetchImpl, knowledge: cfg.knowledge })).slice(0, 2000);
-      } catch (err) { result = `Error: ${err.message}`; }
+      const result = await execTool(avail, cfg, name, args, { fetch: fetchImpl, lookup });
       steps.push({ tool: name, args, result });
       messages.push({ role: 'tool', tool_call_id: call.id, content: result });
     }
@@ -184,26 +270,32 @@ async function runAgent({ config, history, llm, fetchImpl = fetch }) {
   return { reply: 'Usé demasiadas herramientas sin llegar a una respuesta. Reformula la pregunta o simplifica las instrucciones del agente.', steps };
 }
 
+async function execTool(avail, cfg, name, args, ctx) {
+  try {
+    if (!avail[name]) throw new Error(`La herramienta "${name}" no está activada`);
+    return String(await avail[name].run(args || {}, { ...ctx, knowledge: cfg.knowledge, rag: cfg.rag })).slice(0, 2000);
+  } catch (err) { return `Error: ${err.message}`; }
+}
+
 function buildSystem(cfg) {
   const base = cfg.system.trim() || 'Eres un asistente útil. Responde en español, de forma clara y breve.';
   const extra = [];
-  if (cfg.tools.length) extra.push('Cuando una herramienta pueda dar el dato exacto, úsala en vez de adivinar.');
-  if (cfg.knowledge && !cfg.tools.includes('buscar_conocimiento')) extra.push('Notas del usuario:\n' + cfg.knowledge.slice(0, 6000));
+  if (cfg.tools.length || cfg.apis.length) extra.push('Cuando una herramienta pueda dar el dato exacto, úsala en vez de adivinar.');
+  if (cfg.rag.enabled) extra.push('Para preguntas sobre las notas del usuario, consulta primero la herramienta buscar_conocimiento y responde solo con lo que encuentres.');
+  else if (cfg.knowledge) extra.push('Notas del usuario:\n' + cfg.knowledge.slice(0, 6000));
   return extra.length ? `${base}\n\n${extra.join('\n\n')}` : base;
 }
 
 // Ejecuta una herramienta fuera del bucle (lo usa el modo Ollama, cuyo bucle corre en el navegador).
-async function runTool(rawConfig, name, args, fetchImpl = fetch) {
+async function runTool(rawConfig, name, args, fetchImpl = fetch, lookup) {
   const cfg = sanitizeConfig(rawConfig);
-  if (!TOOLS[name] || !cfg.tools.includes(name)) return `Error: La herramienta "${name}" no está activada`;
-  try { return String(await TOOLS[name].run(args || {}, { fetch: fetchImpl, knowledge: cfg.knowledge })).slice(0, 2000); }
-  catch (err) { return `Error: ${err.message}`; }
+  return execTool(toolsFor(cfg), cfg, name, args, { fetch: fetchImpl, lookup });
 }
 
 // Lo que un cliente necesita para dirigir el modelo por su cuenta.
 function prepare(rawConfig) {
   const cfg = sanitizeConfig(rawConfig);
-  return { system: buildSystem(cfg), tools: cfg.tools.map(n => TOOLS[n].def), temperature: cfg.temperature };
+  return { system: buildSystem(cfg), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
 }
 
-module.exports = { runTool, prepare, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
+module.exports = { runTool, prepare, retrieve, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
