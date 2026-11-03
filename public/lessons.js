@@ -33,19 +33,19 @@ window.MODULES = [
     id: 'm2', min: 20, title: 'Instrucciones y parámetros', icon: '🎛️',
     goal: 'Escribir un prompt de sistema claro y entender qué cambian la temperatura y el modelo.',
     concepts: [
-      ['Prompt de sistema', 'Una buena instrucción tiene: rol («Eres…»), tarea, tono, formato de la respuesta y límites («si no sabes, dilo»).'],
+      ['Prompt de sistema', 'Una buena instrucción tiene: nombre, personalidad, estilo, estructura de la respuesta y reglas. El Constructor los pide por separado y los junta en una plantilla de prompt, igual que un ChatPromptTemplate de LangChain.'],
       ['Temperatura', '0 = respuestas casi idénticas, ideal para datos y cálculos. Cerca de 1 = más variedad, útil para ideas; también más riesgo de inventar.'],
-      ['Modelo', 'El 70B razona mejor y llama herramientas con más fiabilidad. El 8B es más rápido y tiene menos cuota de uso.'],
+      ['Modelo', 'Los modelos grandes (como gpt-oss-120b) razonan mejor y llaman herramientas con más fiabilidad; los pequeños (gpt-oss-20b) responden más rápido. Groq retira modelos cada pocos meses: la lista del Constructor se pide a Groq en vivo.'],
       ['Tokens', 'El modelo lee y escribe en fragmentos de texto. Instrucciones más cortas dejan más espacio para la conversación.']
     ],
     steps: [
-      'Carga el agente «Tutor de agentes de IA» y léelo: identifica rol, tono, formato y límites.',
+      'Carga el agente «Tutor de agentes de IA», abre la sección 2 y despliega «Ver el prompt final»: identifica qué campo produjo cada línea.',
       'En la sección 1 (Modelo y temperatura) usa los botones Preciso y Creativo: haz la misma pregunta con cada uno, lee la explicación que aparece y compara.',
-      'Cambia el prompt para que responda solo con 3 viñetas y pruébalo.',
+      'Cambia el nombre, la personalidad y el estilo (por ejemplo un pirata formal) y la estructura de respuesta a «Pasos numerados»; pregunta lo mismo y compara.',
       'Elige el dominio de tu agente final (por ejemplo: clínica, tienda, universidad, finanzas) y escribe su primer prompt.'
     ],
     preset: 'tutor',
-    check: ['Identifiqué rol, tono, formato y límites en un prompt', 'Comparé temperatura 0 contra 1.2', 'Escribí el primer prompt de mi agente']
+    check: ['Identifiqué en el prompt final qué línea sale de cada campo', 'Comparé temperatura 0 contra 1.2', 'Configuré nombre, personalidad, estilo y estructura de mi agente']
   },
   {
     id: 'm3', min: 25, title: 'Herramientas', icon: '🔧',
@@ -89,17 +89,17 @@ window.MODULES = [
     concepts: [
       ['Qué debe cumplir', 'Nombre y rol claros · al menos una herramienta o notas propias · límites escritos en el prompt · 3 pruebas que funcionen.'],
       ['Cómo se evalúa', 'Una prueba que debe funcionar, una que muestre una herramienta en la traza y una que muestre que el agente reconoce lo que no sabe.'],
-      ['Exportar', 'Descarga la configuración (.json) para volver a cargarla, y el script de Python para correr el mismo agente fuera de esta página.'],
+      ['Exportar', 'Descarga la configuración (.json) para volver a cargarla, y el script de Python (con LangChain o directo con Groq) para correr el mismo agente fuera de esta página.'],
       ['Siguiente paso', 'LangChain y LangGraph para agentes con varios pasos, FastAPI para publicarlos como servicio y Railway para ponerlos en línea: es el curso completo de Agentes de IA.']
     ],
     steps: [
       'Termina tu agente en el Constructor: nombre, prompt, herramientas y notas.',
       'Ejecuta las 3 pruebas del reto y guarda una captura de cada una.',
-      'Descarga la configuración (.json) y el script de Python.',
+      'Descarga la configuración (.json) y el script de Python con LangChain.',
       'Presenta tu agente en 1 minuto: qué hace, qué herramienta usa y qué no sabe hacer.'
     ],
     preset: null,
-    check: ['Mi agente tiene rol, herramientas y límites', 'Pasó las 3 pruebas', 'Descargué el .json y el script de Python']
+    check: ['Mi agente tiene rol, herramientas y límites', 'Pasó las 3 pruebas', 'Descargué el .json y el script de Python con LangChain']
   }
 ];
 
@@ -107,22 +107,34 @@ window.PRESETS = {
   basico: {
     name: 'Asistente básico',
     system: 'Eres un asistente. Responde en español, de forma breve.',
-    model: 'llama-3.3-70b-versatile', temperature: 0.7, maxTokens: 700, memory: { mode: 'window', size: 6 }, tools: [], knowledge: ''
+    model: 'openai/gpt-oss-120b', temperature: 0.7, maxTokens: 700, memory: { mode: 'window', size: 6 }, tools: [], knowledge: ''
   },
   tutor: {
-    name: 'Tutor de agentes de IA',
-    system: 'Eres un tutor de agentes de IA para estudiantes universitarios.\nTarea: explicar conceptos de forma clara, con un ejemplo corto.\nTono: cercano y profesional.\nFormato: máximo 4 líneas por respuesta; si hay pasos, usa una lista numerada.\nLímites: si la pregunta no trata de agentes, modelos de lenguaje o programación, dilo con amabilidad y redirige al tema.',
-    model: 'llama-3.3-70b-versatile', temperature: 0.3, maxTokens: 500, memory: { mode: 'window', size: 8 }, tools: [], knowledge: ''
+    name: 'Profe Nova',
+    persona: 'Tutor paciente y curioso; le gusta explicar con analogías de la vida diaria y celebra las buenas preguntas.',
+    style: 'cercano y profesional, sin tecnicismos innecesarios',
+    format: 'resumen',
+    rules: 'Máximo 4 líneas por respuesta. Si la pregunta no trata de agentes, modelos de lenguaje o programación, dilo con amabilidad y redirige al tema.',
+    system: 'Explicas conceptos de agentes de IA a estudiantes universitarios, con un ejemplo corto.',
+    model: 'openai/gpt-oss-120b', temperature: 0.3, maxTokens: 500, memory: { mode: 'window', size: 8 }, tools: [], knowledge: ''
   },
   herramientas: {
-    name: 'Asistente con herramientas',
-    system: 'Eres un asistente práctico. Responde en español y muestra siempre el dato que obtuviste.\nUsa la calculadora para cualquier cuenta, la herramienta de clima para el tiempo y la de fecha y hora para el día y la hora.\nNo adivines números: si una herramienta falla, dilo.',
-    model: 'llama-3.3-70b-versatile', temperature: 0.1, maxTokens: 700, memory: { mode: 'window', size: 6 }, tools: ['calculadora', 'fecha_hora', 'clima'], knowledge: ''
+    name: 'Asistente práctico',
+    persona: 'Eficiente y confiable: prefiere un dato exacto a una respuesta bonita.',
+    style: 'claro y directo',
+    format: 'vinetas',
+    rules: 'No adivines números: si una herramienta falla, dilo. Muestra siempre el dato que obtuviste.',
+    system: 'Usa la calculadora para cualquier cuenta, la herramienta de clima para el tiempo y la de fecha y hora para el día y la hora.',
+    model: 'openai/gpt-oss-120b', temperature: 0.1, maxTokens: 700, memory: { mode: 'window', size: 6 }, tools: ['calculadora', 'fecha_hora', 'clima'], knowledge: ''
   },
   notas: {
-    name: 'Agente con notas',
-    system: 'Eres el asistente de la Academia Nova. Respondes solo con la información de las notas.\nSi la respuesta no está en las notas, di «No tengo ese dato» y sugiere escribir a la secretaría.\nResponde en español, en máximo 3 líneas.',
-    model: 'llama-3.3-70b-versatile', temperature: 0.1, maxTokens: 500, memory: { mode: 'window', size: 6 }, rag: { enabled: true, k: 3, chunk: 600 }, tools: [],
+    name: 'Asistente de la Academia Nova',
+    persona: 'Amable y organizado, como una buena secretaría académica.',
+    style: 'cordial y breve',
+    format: 'libre',
+    rules: 'Responde solo con la información de las notas. Si la respuesta no está, di «No tengo ese dato» y sugiere escribir a la secretaría. Máximo 3 líneas.',
+    system: 'Atiendes preguntas sobre el curso de Introducción a la Inteligencia Artificial de la Academia Nova.',
+    model: 'openai/gpt-oss-120b', temperature: 0.1, maxTokens: 500, memory: { mode: 'window', size: 6 }, rag: { enabled: true, k: 3, chunk: 600 }, tools: [],
     knowledge: 'Academia Nova: curso de Introducción a la Inteligencia Artificial.\n\nHorario: martes y jueves de 6:00 pm a 8:00 pm, en el aula 204 del edificio B. El curso dura 8 semanas e inicia el 3 de febrero.\n\nCosto: la matrícula cuesta $1.200.000 COP. Los egresados de la Academia tienen 15 % de descuento. Se puede pagar en dos cuotas: la primera al matricularse y la segunda en la semana 4.\n\nRequisitos: no se necesita experiencia en programación. Se recomienda llevar portátil con acceso a internet.\n\nCertificado: se entrega un certificado digital a quienes asistan al 80 % de las clases y presenten el proyecto final.\n\nContacto: secretaria@academianova.example, de lunes a viernes de 8:00 am a 5:00 pm.'
   }
 };

@@ -17,7 +17,8 @@ const groq = http.createServer((req, res) => {
     seenKeys.push(key);
     res.setHeader('content-type', 'application/json');
     if (!key.startsWith('gsk_good')) { res.statusCode = 401; return res.end('{}'); }
-    if (req.url.endsWith('/models')) return res.end('{"data":[]}');
+    if (req.url.endsWith('/models')) return res.end('{"data":[{"id":"openai/gpt-oss-20b"},{"id":"whisper-large-v3"},{"id":"openai/gpt-oss-120b"},{"id":"meta-llama/llama-guard-4-12b"},{"id":"zeta/modelo-nuevo"}]}');
+    if (/retirado/.test(body)) { res.statusCode = 400; return res.end('{"error":{"message":"The model `retirado` has been decommissioned and is no longer supported.","code":"model_decommissioned"}}'); }
     res.end(JSON.stringify({ choices: [{ message: { content: 'hola desde groq' } }] }));
   });
 });
@@ -134,4 +135,29 @@ test('el RAG extrae el texto de un PDF y rechaza lo que no es PDF', async () => 
   assert.strictEqual((await send(Buffer.from('esto no es un pdf'), ana)).status, 400);
   const rag = await call('POST', '/api/rag-test', { knowledge: data.text, query: 'matrícula cuesta', k: 2, chunk: 300 }, ana);
   assert.match(rag.data.chunks[0].text, /matrícula/);
+});
+
+test('la lista de modelos viene de Groq, sin audio ni moderación, y los retirados dan un mensaje claro', async () => {
+  const ana = (await call('POST', '/api/login', { username: 'ana', password: 'password1' })).cookie;
+  const m = (await call('GET', '/api/models', undefined, ana)).data;
+  assert.strictEqual(m.source, 'groq');
+  assert.deepStrictEqual(m.models, ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'].filter(x => m.models.includes(x)).concat(['zeta/modelo-nuevo']));
+  const r = await call('POST', '/api/agent', { config: { model: 'retirado' }, history: [{ role: 'user', content: 'hola' }] }, ana);
+  assert.strictEqual(r.status, 400);
+  assert.match(r.data.error, /«retirado» ya no está disponible/);
+});
+
+test('cada persona cambia su propia contraseña y su API key', async () => {
+  await call('POST', '/api/register', { username: 'mia', password: 'password3', code: 'clase2026' });
+  const c = (await call('POST', '/api/login', { username: 'mia', password: 'password3' })).cookie;
+  assert.strictEqual((await call('PUT', '/api/me/password', { current: 'mal', password: 'nueva-clave-1' }, c)).status, 400);
+  assert.strictEqual((await call('PUT', '/api/me/password', { current: 'password3', password: 'corta' }, c)).status, 400);
+  assert.strictEqual((await call('PUT', '/api/me/password', { current: 'password3', password: 'nueva-clave-1' }, c)).status, 200);
+  assert.strictEqual((await call('POST', '/api/login', { username: 'mia', password: 'password3' })).status, 401);
+  assert.strictEqual((await call('POST', '/api/login', { username: 'mia', password: 'nueva-clave-1' })).status, 200);
+  const first = 'gsk_good' + 'A'.repeat(24), second = 'gsk_good' + 'Z'.repeat(24);
+  await call('PUT', '/api/me/groq-key', { key: first }, c);
+  const r = await call('PUT', '/api/me/groq-key', { key: second }, c);
+  assert.strictEqual(r.data.keyHint, 'gsk_…ZZZZ');
+  assert.strictEqual((await call('GET', '/api/me', undefined, c)).data.keyHint, 'gsk_…ZZZZ');
 });

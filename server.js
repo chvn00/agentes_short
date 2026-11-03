@@ -2,7 +2,7 @@ const path = require('path');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { runAgent, runTool, prepare, retrieve, TOOLS, MODELS } = require('./agent');
+const { runAgent, runTool, prepare, retrieve, TOOLS, MODELS, FORMATS, PROMPT_LINES } = require('./agent');
 const { createPool, init } = require('./db');
 const { SESSION_KEY, encrypt, decrypt, safeEqual } = require('./secrets');
 
@@ -34,23 +34,33 @@ async function sharedKey() {
 }
 
 /* ---------- Groq ---------- */
+const REASONING = /^(openai\/gpt-oss|qwen\/)/;        // modelos que "piensan" antes de responder
+const strip = t => String(t || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+function groqError(status, body, model) {
+  let detail = '';
+  try { const j = JSON.parse(body); detail = (j.error && (j.error.message || j.error.code)) || ''; } catch { /* sin JSON */ }
+  console.error('[Groq]', status, model, String(body).slice(0, 300));
+  if (status === 401) return Object.assign(new Error('Groq rechazó tu API key. Vuelve a guardarla en «Mi cuenta».'), { status: 400 });
+  if (status === 429) return Object.assign(new Error('Llegaste al límite de tu cuenta de Groq. Espera un minuto e inténtalo de nuevo.'), { status: 429 });
+  if (/decommission|no longer supported|model_not_found|does not exist|not found/i.test(detail + body)) return Object.assign(new Error(`El modelo «${model}» ya no está disponible en Groq. Elige otro en la sección 1 del Constructor.`), { status: 400 });
+  if (/tool_use_failed|failed to call a function/i.test(detail + body)) return Object.assign(new Error('El modelo armó mal la llamada a una herramienta. Pregunta de nuevo o prueba con otro modelo.'), { status: 502 });
+  return Object.assign(new Error(detail ? `Groq respondió: ${String(detail).slice(0, 200)}` : 'El modelo no pudo responder en este momento.'), { status: 502 });
+}
+
 function makeLlm(apiKey) {
+  const call = body => fetch(`${GROQ_BASE}/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return async ({ model, temperature, maxTokens, messages, tools }) => {
-    const res = await fetch(`${GROQ_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, temperature, messages, tools, max_tokens: maxTokens || 700 })
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error('[Groq]', res.status, body.slice(0, 300));
-      const msg = res.status === 401 ? 'Groq rechazó tu API key. Vuelve a pegarla en el paso 2 del módulo 0.'
-        : res.status === 429 ? 'Llegaste al límite de tu cuenta de Groq. Espera un minuto e inténtalo de nuevo.'
-        : /tool_use_failed/.test(body) ? 'El modelo armó mal la llamada a una herramienta. Pregunta de nuevo o prueba con el modelo 70B.'
-        : 'El modelo no pudo responder en este momento.';
-      throw Object.assign(new Error(msg), { status: res.status === 401 ? 400 : res.status === 429 ? 429 : 502 });
+    const base = { model, temperature, messages, tools, max_completion_tokens: (maxTokens || 700) + (REASONING.test(model) ? 800 : 0) };
+    const extra = /^openai\/gpt-oss/.test(model) ? { reasoning_effort: 'low' } : /^qwen\//.test(model) ? { reasoning_format: 'hidden' } : null;
+    let res = await call(extra ? { ...base, ...extra } : base);
+    if (res.status === 400 && extra) {                 // por si el modelo no acepta ese parámetro, se reintenta sin él
+      const t = await res.clone().text();
+      if (/reasoning_(effort|format)/i.test(t)) res = await call(base);
     }
-    return (await res.json()).choices[0].message;
+    if (!res.ok) throw groqError(res.status, await res.text(), model);
+    const msg = (await res.json()).choices[0].message;
+    return { ...msg, content: strip(msg.content) };
   };
 }
 
@@ -98,6 +108,7 @@ app.use(express.json({ limit: '400kb' }));
 app.get('/api/info', wrap(async (req, res) => {
   res.json({
     needsCode: !!ACCESS_CODE, adminReady, sharedKey: !!(await sharedKey()), models: MODELS,
+    formats: Object.fromEntries(Object.entries(FORMATS).map(([k, v]) => [k, v.label])), promptLines: PROMPT_LINES.map(([, l]) => l),
     tools: Object.entries(TOOLS).map(([id, t]) => ({ id, label: t.label, description: t.def.function.description }))
   });
 }));
@@ -157,6 +168,35 @@ app.put('/api/me/groq-key', auth, limiter(10), wrap(async (req, res) => {
 app.delete('/api/me/groq-key', auth, wrap(async (req, res) => {
   await pool.query('UPDATE users SET groq_key = NULL WHERE id = $1', [req.user.id]);
   res.json({ hasKey: false });
+}));
+
+/* Modelos disponibles hoy en Groq (la lista cambia: Groq retira modelos cada pocos meses) */
+const modelCache = new Map();
+app.get('/api/models', auth, wrap(async (req, res) => {
+  const { rows } = await pool.query('SELECT groq_key FROM users WHERE id = $1', [req.user.id]);
+  const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key)) || await sharedKey();
+  if (!key) return res.json({ models: MODELS, source: 'respaldo' });
+  const hit = modelCache.get(key);
+  if (hit && Date.now() - hit.t < 600000) return res.json({ models: hit.models, source: 'groq' });
+  try {
+    const r = await fetch(`${GROQ_BASE}/models`, { headers: { Authorization: `Bearer ${key}` } });
+    if (!r.ok) throw new Error('sin lista');
+    const ids = ((await r.json()).data || []).map(m => m.id).filter(id => typeof id === 'string' && !/whisper|orpheus|guard|safeguard|tts|embed|compound|playai/i.test(id));
+    if (!ids.length) throw new Error('lista vacía');
+    const models = [...MODELS.filter(m => ids.includes(m)), ...ids.filter(id => !MODELS.includes(id)).sort()];
+    modelCache.set(key, { t: Date.now(), models });
+    res.json({ models, source: 'groq' });
+  } catch { res.json({ models: MODELS, source: 'respaldo' }); }
+}));
+
+app.put('/api/me/password', auth, limiter(10, 60000, req => 'pw' + req.user.id), wrap(async (req, res) => {
+  const { current, password } = req.body || {};
+  if (typeof password !== 'string' || password.length < 8 || password.length > 100) return res.status(400).json({ error: 'La contraseña nueva debe tener al menos 8 caracteres.' });
+  const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+  if (!rows[0] || !(await bcrypt.compare(String(current || ''), rows[0].password_hash))) return res.status(400).json({ error: 'La contraseña actual no es correcta.' });
+  if (req.user.username === ADMIN_USERNAME) return res.status(400).json({ error: 'La contraseña del administrador se cambia con la variable ADMIN_PASSWORD en Railway.' });
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(password, 10), req.user.id]);
+  res.json({ ok: true });
 }));
 
 /* Agentes guardados en la cuenta */
@@ -227,6 +267,19 @@ admin.post('/users/:id/password', wrap(async (req, res) => {
   const upd = await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2 AND username <> $3', [await bcrypt.hash(password, 10), req.params.id, ADMIN_USERNAME]);
   if (!upd.rowCount) return res.status(404).json({ error: 'Usuario no encontrado' });
   res.json({ ok: true });
+}));
+
+admin.post('/users/delete', wrap(async (req, res) => {
+  const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : []).map(Number).filter(Number.isInteger).slice(0, 200);
+  let deleted = 0;
+  for (const id of ids) {
+    const { rows } = await pool.query('SELECT username FROM users WHERE id = $1', [id]);
+    if (!rows[0] || rows[0].username === ADMIN_USERNAME) continue;
+    await pool.query('DELETE FROM agents WHERE user_id = $1', [id]);
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    deleted++;
+  }
+  res.json({ deleted });
 }));
 
 admin.delete('/users/:id', wrap(async (req, res) => {

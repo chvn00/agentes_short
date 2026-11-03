@@ -21,9 +21,9 @@ test('búsqueda en notas ordena por coincidencias e ignora tildes', () => {
 });
 
 test('sanitizeConfig limita valores y descarta herramientas desconocidas', () => {
-  const c = sanitizeConfig({ name: 'x'.repeat(99), model: 'otro', temperature: 9, tools: ['calculadora', 'calculadora', 'rm -rf'] });
+  const c = sanitizeConfig({ name: 'x'.repeat(99), model: 'otro modelo!', temperature: 9, tools: ['calculadora', 'calculadora', 'rm -rf'] });
   assert.strictEqual(c.name.length, 40);
-  assert.strictEqual(c.model, 'llama-3.3-70b-versatile');
+  assert.strictEqual(c.model, 'openai/gpt-oss-120b');
   assert.strictEqual(c.temperature, 1.5);
   assert.deepStrictEqual(c.tools, ['calculadora']);
 });
@@ -121,4 +121,22 @@ test('el interruptor de RAG controla la herramienta de búsqueda y respeta k y e
   assert.strictEqual(retrieve(text, 'gato', 2).chunks.length, 2);
   assert.strictEqual(retrieve(text, 'gato', 5).total, 4);
   assert.deepStrictEqual(retrieve('x'.repeat(1000) + ' sol', 'sol', 3, 300).chunks.length, 1);
+});
+
+const { buildSystem, PROMPT_LINES } = require('../agent');
+
+test('los modelos retirados por Groq se reemplazan y los nuevos se aceptan', () => {
+  assert.strictEqual(sanitizeConfig({ model: 'llama-3.3-70b-versatile' }).model, 'openai/gpt-oss-120b');
+  assert.strictEqual(sanitizeConfig({ model: 'llama-3.1-8b-instant' }).model, 'openai/gpt-oss-20b');
+  assert.strictEqual(sanitizeConfig({ model: 'qwen/qwen3.8-27b' }).model, 'qwen/qwen3.8-27b');
+  assert.strictEqual(sanitizeConfig({ model: 'x; drop table' }).model, 'openai/gpt-oss-120b');
+});
+
+test('el prompt se arma con la plantilla: nombre, personalidad, estilo, formato y reglas', () => {
+  const sys = prepare({ name: 'Luna', persona: 'Curiosa', style: 'cercano', format: 'pasos', rules: 'No inventes', system: 'Ayuda con IA' }).system;
+  assert.deepStrictEqual(sys.split('\n').slice(0, 6), ['Te llamas Luna.', 'Personalidad: Curiosa', 'Estilo y tono: cercano', 'Formato de las respuestas: Responde con pasos numerados y claros: 1., 2., 3.', 'Reglas que siempre cumples: No inventes', 'Ayuda con IA']);
+  assert.ok(!/Personalidad|Estilo/.test(prepare({ name: 'Sol' }).system));
+  assert.match(prepare({ format: 'json', formatCustom: 'respuesta, fuente' }).system, /JSON válido.*Claves del objeto: respuesta, fuente/);
+  assert.match(prepare({ format: 'personalizado', formatCustom: 'Responde en haiku' }).system, /Responde en haiku/);
+  assert.strictEqual(PROMPT_LINES.length, 7);
 });

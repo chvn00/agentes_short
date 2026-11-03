@@ -213,3 +213,7 @@ pre.aptest{margin:0;background:#0f1b33;color:#d7e3ff;border-radius:10px;padding:
 .msg.forgot,.trace.forgot{opacity:.38;filter:grayscale(.6)}
 .forgotNote{align-self:center;font-size:12px;color:var(--muted);border-top:1px dashed #b9c4de;padding-top:4px;width:100%;text-align:center}
 .cfg{max-height:none}
+.dngBtn{background:#e0546b;color:#fff}.dngBtn:disabled{opacity:.45}.acts .dng{background:#fdecef;border-color:#f3b9c2;font-weight:700}
+code.var{font-size:11.5px;background:#eef2fb;color:var(--blue);border-radius:6px;padding:1px 5px;font-weight:600}
+details.preview{margin-top:6px}details.preview summary{cursor:pointer;color:var(--blue);font-size:13.5px;font-weight:600}
+details.preview pre{background:#0f1b33;color:#d7e3ff;border-radius:10px;padding:10px 12px;font-size:12.5px;white-space:pre-wrap;word-break:break-word;margin:6px 0 0}

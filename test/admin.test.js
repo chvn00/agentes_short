@@ -108,3 +108,16 @@ test('la clave de Groq del curso se valida y la usa quien no tiene la suya', asy
   await call('DELETE', '/api/admin/shared-key', undefined, adm);
   assert.strictEqual((await call('POST', '/api/agent', { config: {}, history: hist }, ana)).status, 400);
 });
+
+test('el administrador borra varios usuarios a la vez sin tocar su propia cuenta', async () => {
+  const adm = (await call('POST', '/api/login', { username: 'profe', password: 'clave-del-profe-1' })).cookie;
+  for (const n of ['uno', 'dos', 'tres']) await call('POST', '/api/register', { username: n, password: 'password1', code: 'clase2026' });
+  const list = (await call('GET', '/api/admin/users', undefined, adm)).data;
+  const ids = list.filter(u => ['uno', 'dos', 'tres'].includes(u.username)).map(u => u.id).concat(list.find(u => u.isAdmin).id);
+  const out = await call('POST', '/api/admin/users/delete', { ids }, adm);
+  assert.strictEqual(out.data.deleted, 3);
+  const left = (await call('GET', '/api/admin/users', undefined, adm)).data.map(u => u.username);
+  assert.ok(left.includes('profe') && !left.includes('uno'));
+  const est = (await call('POST', '/api/register', { username: 'cuatro', password: 'password1', code: 'clase2026' })).cookie;
+  assert.strictEqual((await call('POST', '/api/admin/users/delete', { ids: [1] }, est)).status, 403);
+});

@@ -5,8 +5,9 @@
   const el = (tag, attrs = {}, html = '') => { const e = document.createElement(tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); e.innerHTML = html; return e; };
 
   /* ---------- servidor y sesión ---------- */
-  let info = { needsCode: false, sharedKey: false, models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'], tools: [] };
+  let info = { needsCode: false, sharedKey: false, models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'], formats: {}, tools: [] };
   let me = null; // { username, hasKey, keyHint, progress, settings }
+  let groqModels = null; // lista real de Groq (se pide una vez por sesión)
 
   async function api(path, method = 'GET', body) {
     const res = await fetch(path, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -100,7 +101,7 @@
   setInterval(drawClock, 1000); drawClock();
 
   /* ---------- navegación ---------- */
-  const routes = () => [['inicio', 'Inicio', '🏠'], ...window.MODULES.map(m => [m.id, modLabel(m), m.icon]), ['constructor', 'Constructor de agentes', '🛠️'], ['recursos', 'Recursos', '🔗'], ...(me && me.isAdmin ? [['admin', 'Administración', '👑']] : [])];
+  const routes = () => [['inicio', 'Inicio', '🏠'], ...window.MODULES.map(m => [m.id, modLabel(m), m.icon]), ['constructor', 'Constructor de agentes', '🛠️'], ['recursos', 'Recursos', '🔗'], ['cuenta', 'Mi cuenta', '⚙️'], ...(me && me.isAdmin ? [['admin', 'Administración', '👑']] : [])];
   function drawNav(cur) {
     nav.innerHTML = routes().map(([id, label, icon]) => {
       const m = window.MODULES.find(x => x.id === id);
@@ -118,6 +119,7 @@
     else if (known === 'constructor') builder();
     else if (known === 'recursos') resources();
     else if (known === 'admin') adminPage();
+    else if (known === 'cuenta') accountPage();
     else lesson(window.MODULES.find(m => m.id === known));
     window.scrollTo(0, 0);
   }
@@ -239,6 +241,37 @@
     return ((await r.json()).models || []).map(m => m.name);
   }
 
+  /* ---------- mi cuenta ---------- */
+  function accountPage() {
+    view.innerHTML = `<div class="pagehead"><h1>⚙️ Mi cuenta</h1><p>Tu usuario, tu API key de Groq y tu contraseña.</p></div>
+      <div class="grid g2">
+        <div class="card"><h3>API key de Groq</h3>
+          <p id="acKeyState" style="margin-bottom:8px">${me.hasKey ? `<span class="good">✓ Guardada (${esc(me.keyHint)})</span>` : '<span class="bad">Todavía no tienes una guardada.</span>'}</p>
+          <p style="font-size:14px;color:var(--muted)">Pega una clave nueva para reemplazar la actual. La verifico con Groq antes de guardarla y queda cifrada. Puedes crear otra en <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.</p>
+          <div class="act sk"><input type="password" id="acKey" placeholder="gsk_…" autocomplete="off"><button class="btn sm" id="acKeySave" type="button">${me.hasKey ? 'Cambiar clave' : 'Guardar clave'}</button>${me.hasKey ? '<button class="btn sm sec" id="acKeyDel" type="button">Borrar mi clave</button>' : ''}</div>
+          <p class="msg2" id="acKeyMsg"></p></div>
+        <div class="card"><h3>Contraseña</h3>
+          ${me.isAdmin ? '<p style="color:var(--muted)">La contraseña del administrador se cambia con la variable <code>ADMIN_PASSWORD</code> en Railway.</p>' : `
+          <div class="field"><label for="pwOld">Contraseña actual</label><input type="password" id="pwOld" autocomplete="current-password"></div>
+          <div class="field"><label for="pwNew">Contraseña nueva (mínimo 8 caracteres)</label><input type="password" id="pwNew" autocomplete="new-password"></div>
+          <button class="btn sm" id="pwSave" type="button">Cambiar contraseña</button><p class="msg2" id="pwMsg"></p>`}</div>
+        <div class="card"><h3>Mi sesión</h3><p>Usuario: <b>${esc(me.username)}</b>${me.isAdmin ? ' · administrador' : ''}</p>
+          <p style="margin-top:6px">Ollama: ${settings().ollamaOk ? `<span class="good">✓ ${esc(settings().ollamaModel || 'conectado')}</span>` : '<span class="bad">sin conectar</span>'} · <a href="#m0">configurar en el módulo 0</a></p></div>
+      </div>`;
+    $('#acKeySave').onclick = async () => {
+      const key = $('#acKey').value.trim(), msg = $('#acKeyMsg'); if (!key) { msg.innerHTML = '<span class="bad">Pega tu clave primero.</span>'; return; }
+      msg.textContent = 'Verificando con Groq…'; $('#acKeySave').disabled = true;
+      try { const r = await api('/api/me/groq-key', 'PUT', { key }); me.hasKey = true; me.keyHint = r.keyHint; groqModels = null; accountPage(); $('#acKeyMsg').innerHTML = '<span class="good">✓ Clave verificada y guardada.</span>'; }
+      catch (e) { msg.innerHTML = `<span class="bad">${esc(e.message)}</span>`; $('#acKeySave').disabled = false; }
+    };
+    if ($('#acKeyDel')) $('#acKeyDel').onclick = async () => { if (!confirm('¿Borrar tu API key de Groq?')) return; await api('/api/me/groq-key', 'DELETE'); me.hasKey = false; me.keyHint = null; groqModels = null; accountPage(); };
+    if ($('#pwSave')) $('#pwSave').onclick = async () => {
+      const msg = $('#pwMsg');
+      try { await api('/api/me/password', 'PUT', { current: $('#pwOld').value, password: $('#pwNew').value }); $('#pwOld').value = ''; $('#pwNew').value = ''; msg.innerHTML = '<span class="good">✓ Contraseña cambiada.</span>'; }
+      catch (e) { msg.innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+    };
+  }
+
   /* ---------- administración ---------- */
   async function adminPage() {
     view.innerHTML = '<div class="pagehead"><h1>👑 Administración</h1><p>Estudiantes, avance y clave de Groq del curso.</p></div><div id="admBox"><p>Cargando…</p></div>';
@@ -264,11 +297,11 @@
         <div class="card"><b>${students.filter(u => u.ollamaOk).length}</b><span>con Ollama conectado</span></div>
         <div class="card"><b>${pct}%</b><span>avance promedio</span></div>
       </div>
-      <div class="row" style="justify-content:space-between;align-items:center;margin:18px 0 8px"><h2 class="sec-title" style="margin:0">Estudiantes</h2><button class="btn sm sec" id="csv" type="button">Descargar CSV</button></div>
-      <div class="tablewrap"><table class="adm"><thead><tr><th>Usuario</th><th>Creado</th><th>Última vez</th><th>Groq</th><th>Ollama</th><th>Avance</th><th>Agentes</th><th></th></tr></thead><tbody>
-      ${users.map(u => `<tr data-id="${u.id}"><td><b>${esc(u.username)}</b>${u.isAdmin ? ' <span class="pill y">admin</span>' : ''}</td><td>${when(u.createdAt)}</td><td>${when(u.lastSeen)}</td>
+      <div class="row" style="justify-content:space-between;align-items:center;margin:18px 0 8px"><h2 class="sec-title" style="margin:0">Estudiantes</h2><div class="row"><button class="btn sm dngBtn" id="delSel" type="button" disabled>🗑 Borrar seleccionados</button><button class="btn sm sec" id="csv" type="button">Descargar CSV</button></div></div>
+      <div class="tablewrap"><table class="adm"><thead><tr><th><input type="checkbox" id="selAll" title="Seleccionar a todos"></th><th>Usuario</th><th>Creado</th><th>Última vez</th><th>Groq</th><th>Ollama</th><th>Avance</th><th>Agentes</th><th></th></tr></thead><tbody>
+      ${users.map(u => `<tr data-id="${u.id}"><td>${u.isAdmin ? '' : '<input type="checkbox" class="selU">'}</td><td><b>${esc(u.username)}</b>${u.isAdmin ? ' <span class="pill y">admin</span>' : ''}</td><td>${when(u.createdAt)}</td><td>${when(u.lastSeen)}</td>
         <td>${u.hasKey ? '✓' : '—'}</td><td>${u.ollamaOk ? '✓ ' + esc(u.ollamaModel || '') : '—'}</td><td>${done(u)}/${modKeys.length}</td><td>${u.agents}</td>
-        <td class="acts">${u.agents ? '<button type="button" data-a="ag">Ver agentes</button>' : ''}${u.isAdmin ? '' : '<button type="button" data-a="pw">Nueva contraseña</button><button type="button" data-a="del" class="dng">Borrar</button>'}</td></tr>`).join('') || '<tr><td colspan="8">Aún no hay usuarios.</td></tr>'}
+        <td class="acts">${u.agents ? '<button type="button" data-a="ag">Ver agentes</button>' : ''}${u.isAdmin ? '' : '<button type="button" data-a="pw">Nueva contraseña</button><button type="button" data-a="del" class="dng">🗑 Borrar usuario</button>'}</td></tr>`).join('') || '<tr><td colspan="9">Aún no hay usuarios.</td></tr>'}
       </tbody></table></div><div id="agView"></div>`;
 
     $('#skSave').onclick = async () => {
@@ -286,6 +319,14 @@
       document.body.appendChild(a); a.click(); a.remove();
     };
 
+    const sel = () => [...box.querySelectorAll('.selU:checked')].map(c => c.closest('tr').dataset.id);
+    const upd = () => { const n = sel().length; $('#delSel').disabled = !n; $('#delSel').textContent = n ? `🗑 Borrar seleccionados (${n})` : '🗑 Borrar seleccionados'; };
+    $('#selAll').onchange = e => { box.querySelectorAll('.selU').forEach(c => { c.checked = e.target.checked; }); upd(); };
+    box.querySelectorAll('.selU').forEach(c => c.onchange = upd);
+    $('#delSel').onclick = async () => {
+      const ids = sel(); if (!ids.length || !confirm(`¿Borrar ${ids.length} cuenta${ids.length === 1 ? '' : 's'} y todos sus agentes? No se puede deshacer.`)) return;
+      try { const r = await api('/api/admin/users/delete', 'POST', { ids }); alert(`${r.deleted} cuenta${r.deleted === 1 ? '' : 's'} borrada${r.deleted === 1 ? '' : 's'}.`); adminPage(); } catch (e) { alert(e.message); }
+    };
     box.querySelectorAll('tbody button').forEach(b => b.onclick = async () => {
       const tr = b.closest('tr'), id = tr.dataset.id, name = tr.querySelector('b').textContent;
       try {
@@ -373,9 +414,16 @@
             <div class="field"><label for="maxtok">Longitud máxima de la respuesta: <b id="mtv"></b> tokens</label><input type="range" id="maxtok" min="100" max="1500" step="100" style="width:100%"><small>Un token son unas 3/4 de palabra.</small></div>
           </div></details>
 
-          <details class="sec" open><summary><span class="n">2</span>Instrucciones</summary><div class="body">
-            <div class="field"><label for="name">Nombre</label><input type="text" id="name" maxlength="40"></div>
-            <div class="field"><label for="system">Rol, tarea, tono, formato y límites</label><textarea id="system" rows="7" maxlength="3000"></textarea></div>
+          <details class="sec" open><summary><span class="n">2</span>Personalidad y respuestas</summary><div class="body">
+            <small style="display:block;margin-bottom:8px">Todo se configura con texto: estos campos llenan una <b>plantilla de prompt</b> (como un <code>ChatPromptTemplate</code> de LangChain) y el modelo la recibe como sus instrucciones.</small>
+            <div class="field"><label for="name">Nombre del agente <code class="var">{nombre}</code></label><input type="text" id="name" maxlength="40"></div>
+            <div class="field"><label for="persona">Personalidad <code class="var">{personalidad}</code></label><textarea id="persona" rows="2" maxlength="600" placeholder="Ej.: Curiosa, paciente y con sentido del humor; le encanta explicar con analogías."></textarea></div>
+            <div class="field"><label for="style">Estilo y tono <code class="var">{estilo}</code></label><input type="text" id="style" maxlength="200" list="styles" placeholder="Ej.: cercano y profesional, sin tecnicismos"><datalist id="styles"><option value="cercano y amable"><option value="formal y profesional"><option value="técnico y preciso"><option value="didáctico, con ejemplos"><option value="breve y directo"><option value="divertido, con humor ligero"></datalist></div>
+            <div class="field"><label for="format">Estructura de las respuestas <code class="var">{formato}</code></label><select id="format"></select>
+              <textarea id="formatCustom" rows="2" maxlength="600" style="margin-top:6px" hidden></textarea></div>
+            <div class="field"><label for="rules">Reglas y límites <code class="var">{reglas}</code></label><textarea id="rules" rows="2" maxlength="800" placeholder="Ej.: No inventes datos. Si no sabes, dilo. Responde siempre en español."></textarea></div>
+            <div class="field"><label for="system">Instrucciones adicionales <code class="var">{instrucciones}</code></label><textarea id="system" rows="5" maxlength="3000" placeholder="Cualquier otra indicación sobre el rol y la tarea."></textarea></div>
+            <details class="preview"><summary>Ver el prompt final que recibe el modelo</summary><pre id="promptPrev"></pre></details>
           </div></details>
 
           <details class="sec" open><summary><span class="n">3</span>Memoria</summary><div class="body">
@@ -403,7 +451,7 @@
             <div class="field"><label for="ragQ">Probar la búsqueda</label><div class="row"><input type="text" id="ragQ" placeholder="Escribe una pregunta de prueba" style="flex:1;min-width:0"><button class="btn sm" id="ragGo" type="button">Buscar</button></div><div id="ragOut"></div></div>
           </div></details>
 
-          <div class="row"><button class="btn sm" id="dlJson" type="button">Descargar .json</button><button class="btn sm sec" id="dlPy" type="button">Descargar Python</button><button class="btn sm sec" id="imp" type="button">Cargar .json</button><input type="file" id="impFile" accept=".json,application/json" hidden></div>
+          <div class="row"><button class="btn sm" id="dlJson" type="button">Descargar .json</button><button class="btn sm sec" id="dlLc" type="button">Python con LangChain</button><button class="btn sm sec" id="dlPy" type="button">Python con Groq</button><button class="btn sm sec" id="imp" type="button">Cargar .json</button><input type="file" id="impFile" accept=".json,application/json" hidden></div>
         </section>
         <section class="panel chat"><div class="row" style="justify-content:space-between;align-items:center"><h2 id="title" style="margin:0"></h2><button class="btn sm sec" id="clear" type="button">Nueva conversación</button></div>
           <div class="sumry" id="sumry"></div>
@@ -412,7 +460,7 @@
         </section>
       </div>`;
 
-    const f = {}; ['preset', 'prov', 'name', 'system', 'model', 'modelLbl', 'temp', 'tv', 'maxtok', 'mtv', 'memMode', 'memSize', 'msv', 'memSizeBox', 'apis', 'apiEx', 'ragOn', 'kn', 'knCount', 'ragK', 'rkv', 'ragChunk', 'ragQ', 'ragOut', 'tempExp', 'memExp', 'knMsg', 'msgs', 'form', 'q', 'send', 'title', 'warn', 'mine', 'mineMsg', 'sumry'].forEach(id => f[id] = $('#' + id));
+    const f = {}; ['preset', 'prov', 'name', 'system', 'model', 'modelLbl', 'temp', 'tv', 'maxtok', 'mtv', 'memMode', 'memSize', 'msv', 'memSizeBox', 'apis', 'apiEx', 'ragOn', 'kn', 'knCount', 'ragK', 'rkv', 'ragChunk', 'ragQ', 'persona', 'style', 'format', 'formatCustom', 'rules', 'promptPrev', 'ragOut', 'tempExp', 'memExp', 'knMsg', 'msgs', 'form', 'q', 'send', 'title', 'warn', 'mine', 'mineMsg', 'sumry'].forEach(id => f[id] = $('#' + id));
 
     function drawWarn() {
       f.warn.innerHTML = provider === 'groq' && noKey ? '<div class="notice">Todavía no guardaste tu API key de Groq. Hazlo en el <a href="#m0">módulo 0, paso 2</a>, o cambia a «Ollama».</div>'
@@ -426,7 +474,9 @@
         ollamaModels().then(names => { if (provider === 'ollama' && names.length) { f.model.innerHTML = names.map(n => `<option ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join(''); } }).catch(() => {});
       } else {
         f.modelLbl.textContent = 'Modelo (Groq)';
-        f.model.innerHTML = info.models.map(m => `<option ${m === cfg.model ? 'selected' : ''}>${esc(m)}</option>`).join('');
+        const list = groqModels || info.models;
+        if (!list.includes(cfg.model)) { cfg.model = list[0]; save(); }       // el modelo guardado ya no existe en Groq
+        f.model.innerHTML = list.map(m => `<option ${m === cfg.model ? 'selected' : ''}>${esc(m)}</option>`).join('');
       }
     }
     function drawSummary() {
@@ -442,6 +492,18 @@
         <div class="aprm">Parámetros: <b>${apiParams(a.url).map(p => '{' + p + '}').join(' ') || 'ninguno'}</b></div>
         <div class="row"><button type="button" class="btn sm sec" data-act="test">Probar</button><button type="button" class="btn sm sec" data-act="del">Quitar</button></div><pre class="aptest" hidden></pre></div>`).join('');
     }
+    const FORMAT_LABELS = Object.keys(info.formats || {}).length ? info.formats : { libre: 'Libre (sin formato fijo)', vinetas: 'Viñetas cortas', pasos: 'Pasos numerados', resumen: 'Resumen y detalle', json: 'JSON', personalizado: 'Personalizado' };
+    f.format.innerHTML = Object.entries(FORMAT_LABELS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+    function drawFormat() {
+      const custom = f.format.value === 'personalizado', json = f.format.value === 'json';
+      f.formatCustom.hidden = !(custom || json);
+      f.formatCustom.placeholder = json ? 'Claves del JSON, separadas por comas. Ej.: respuesta, fuente, confianza' : 'Describe cómo quieres que estructure cada respuesta.';
+    }
+    let prevTimer;
+    function drawPrompt() {
+      clearTimeout(prevTimer);
+      prevTimer = setTimeout(() => api('/api/prepare', 'POST', { config: cfg }).then(p => { if (f.promptPrev.isConnected) f.promptPrev.textContent = p.system; }).catch(() => {}), 350);
+    }
     const TEMP_TXT = t => t <= 0.2 ? ['Casi determinista', 'Ante la misma pregunta responde casi igual. Ideal para cálculos, datos exactos y para usar herramientas.']
       : t <= 0.7 ? ['Equilibrado', 'Respuestas naturales y consistentes. Es un buen punto de partida para la mayoría de agentes.']
       : t <= 1.1 ? ['Variado', 'La redacción cambia entre intentos. Sirve para ideas y textos, pero empieza a perder precisión.']
@@ -456,17 +518,19 @@
     const remembers = () => cfg.memory.mode === 'none' ? 0 : (cfg.memory.mode === 'full' ? 20 : cfg.memory.size) - 1;
     function fill() {
       f.prov.value = provider; fillModels(); drawWarn();
-      f.name.value = cfg.name; f.system.value = cfg.system; f.temp.value = cfg.temperature; f.tv.textContent = cfg.temperature;
+      f.name.value = cfg.name; f.system.value = cfg.system; f.persona.value = cfg.persona || ''; f.style.value = cfg.style || ''; f.rules.value = cfg.rules || '';
+      f.format.value = cfg.format || 'libre'; f.formatCustom.value = cfg.formatCustom || ''; drawFormat(); f.temp.value = cfg.temperature; f.tv.textContent = cfg.temperature;
       f.maxtok.value = cfg.maxTokens; f.mtv.textContent = cfg.maxTokens;
       f.memMode.value = cfg.memory.mode; f.memSize.value = cfg.memory.size; f.msv.textContent = cfg.memory.size; f.memSizeBox.hidden = cfg.memory.mode !== 'window';
       view.querySelectorAll('[data-tool]').forEach(c => c.checked = (cfg.tools || []).includes(c.dataset.tool));
       drawApis();
       f.ragOn.checked = cfg.rag.enabled; f.kn.value = cfg.knowledge || ''; f.ragK.value = cfg.rag.k; f.rkv.textContent = cfg.rag.k; f.ragChunk.value = String(cfg.rag.chunk);
       f.knCount.textContent = (cfg.knowledge || '').length + ' / 60000 caracteres'; f.ragOut.innerHTML = '';
-      f.title.textContent = cfg.name || 'Mi agente'; drawSummary(); drawExplain(); drawChat();
+      f.title.textContent = cfg.name || 'Mi agente'; drawSummary(); drawExplain(); drawPrompt(); drawChat();
     }
     function read() {
-      cfg.name = f.name.value; cfg.system = f.system.value; cfg.temperature = parseFloat(f.temp.value); cfg.maxTokens = parseInt(f.maxtok.value, 10);
+      cfg.name = f.name.value; cfg.system = f.system.value; cfg.persona = f.persona.value; cfg.style = f.style.value; cfg.rules = f.rules.value;
+      cfg.format = f.format.value; cfg.formatCustom = f.formatCustom.value; drawFormat(); cfg.temperature = parseFloat(f.temp.value); cfg.maxTokens = parseInt(f.maxtok.value, 10);
       cfg.knowledge = f.kn.value;
       if (provider === 'groq') cfg.model = f.model.value; else if (f.model.value !== (settings().ollamaModel || '')) setSettings({ ollamaModel: f.model.value });
       cfg.memory = { mode: f.memMode.value, size: parseInt(f.memSize.value, 10) };
@@ -475,17 +539,18 @@
       f.tv.textContent = cfg.temperature; f.mtv.textContent = cfg.maxTokens; f.msv.textContent = cfg.memory.size; f.rkv.textContent = cfg.rag.k;
       f.memSizeBox.hidden = cfg.memory.mode !== 'window'; f.knCount.textContent = cfg.knowledge.length + ' / 60000 caracteres';
       const sig = cfg.memory.mode + cfg.memory.size;
-      f.title.textContent = cfg.name || 'Mi agente'; drawSummary(); drawExplain(); save();
+      f.title.textContent = cfg.name || 'Mi agente'; drawSummary(); drawExplain(); drawPrompt(); save();
       if (sig !== lastSig) { lastSig = sig; drawChat(); }
     }
     let lastSig = '';
     view.querySelectorAll('.cfg input,.cfg select,.cfg textarea').forEach(i => { if (!['preset', 'prov', 'mine', 'apiEx', 'ragQ', 'knFileIn', 'impFile'].includes(i.id) && !i.closest('.apirow')) { i.addEventListener('input', read); i.addEventListener('change', read); } });
     view.querySelectorAll('[data-temp]').forEach(b => b.onclick = () => { f.temp.value = b.dataset.temp; read(); });
+    if (!groqModels) api('/api/models').then(r => { groqModels = r.models; if (provider === 'groq' && f.model.isConnected) fillModels(); }).catch(() => {});
     f.prov.onchange = () => { provider = f.prov.value; setSettings({ provider }); fillModels(); drawWarn(); };
     f.preset.onchange = () => { if (f.preset.value) { setCfg(window.PRESETS[f.preset.value]); chat = []; store.set('chat', chat); drawChat(); } f.preset.value = ''; };
     function setCfg(o) {
       const c = JSON.parse(JSON.stringify(o));
-      Object.assign(cfg, window.PRESETS.basico, c);
+      Object.assign(cfg, { persona: '', style: '', rules: '', format: 'libre', formatCustom: '' }, window.PRESETS.basico, c);
       cfg.apis = Array.isArray(c.apis) ? c.apis : []; cfg.memory = Object.assign({ mode: 'window', size: 6 }, c.memory); cfg.maxTokens = c.maxTokens || 700;
       cfg.rag = Object.assign({ enabled: (c.tools || []).includes('buscar_conocimiento'), k: 3, chunk: 600 }, c.rag);
       cfg.tools = (c.tools || []).filter(t => t !== 'buscar_conocimiento'); save(); fill();
@@ -632,7 +697,14 @@
     const download = (name, text, type) => { const a = el('a', { href: URL.createObjectURL(new Blob([text], { type })), download: name }); document.body.appendChild(a); a.click(); a.remove(); };
     const slug = () => (cfg.name || 'agente').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'agente';
     $('#dlJson').onclick = () => { read(); download(slug() + '.json', JSON.stringify(cfg, null, 2), 'application/json'); };
-    $('#dlPy').onclick = () => { read(); download(slug() + '.py', pythonScript(cfg, toolList, slug()), 'text/x-python'); };
+    $('#dlLc').onclick = async () => {
+      read();
+      try { const p = await api('/api/prepare', 'POST', { config: cfg }); download(slug() + '_langchain.py', langchainScript(cfg, toolList, slug() + '_langchain', p.vars), 'text/x-python'); } catch (e) { alert(e.message); }
+    };
+    $('#dlPy').onclick = async () => {
+      read();
+      try { const p = await api('/api/prepare', 'POST', { config: cfg }); download(slug() + '.py', pythonScript(cfg, toolList, slug(), p.system), 'text/x-python'); } catch (e) { alert(e.message); }
+    };
     $('#imp').onclick = () => $('#impFile').click();
     $('#impFile').onchange = async e => {
       try { const o = JSON.parse(await e.target.files[0].text()); setCfg(Object.assign({}, o, { name: String(o.name || 'Mi agente'), system: String(o.system || ''), temperature: Number(o.temperature) || 0.4, knowledge: String(o.knowledge || '') })); }
@@ -680,7 +752,7 @@ def calculadora(expresion):
     ranking = sorted(partes, key=lambda p: -len(palabras & set(p.lower().split())))
     return "\\n\\n".join(ranking[:3]) or "No hay fragmentos relacionados."`
   };
-  function pythonScript(cfg, toolList, slug) {
+  function pythonScript(cfg, toolList, slug, systemText) {
     const sel = (cfg.tools || []).filter(t => PY[t] && t !== 'buscar_conocimiento');
     const ragOn = !!(cfg.rag && cfg.rag.enabled);
     const apis = (cfg.apis || []).filter(a => slugApi(a.name) && /^https:\/\//i.test(a.url));
@@ -726,11 +798,11 @@ from groq import Groq  # pip install groq
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = ${py(cfg.model)}
 TEMPERATURE = ${Number(cfg.temperature) || 0}      # 0 = preciso · 1.5 = creativo
-MAX_TOKENS = ${cfg.maxTokens || 700}
+MAX_TOKENS = ${(cfg.maxTokens || 700) + (/^(openai\/gpt-oss|qwen\/)/.test(cfg.model) ? 800 : 0)}
 MEMORIA = ${memN}      # cuántos mensajes recuerda (${mem.mode === 'none' ? 'sin memoria' : mem.mode === 'full' ? 'memoria completa' : 'ventana'})
-SYSTEM = ${py(cfg.system || 'Eres un asistente útil.')}
+SYSTEM = ${py(systemText)}      # nombre, personalidad, estilo, formato y reglas ya incluidos
 CONOCIMIENTO = ${py(cfg.knowledge || '')}
-${cfg.knowledge && !ragOn ? 'SYSTEM += "\\n\\nNotas del usuario:\\n" + CONOCIMIENTO\n' : ''}${ragOn ? 'SYSTEM += "\\n\\nPara preguntas sobre las notas del usuario, usa primero buscar_conocimiento."\n' : ''}
+
 ${[...sel.map(t => PY[t]), ragCode, apiCode].filter(Boolean).join('\n\n')}
 
 FUNCIONES = {${fnNames.map(t => `"${t}": ${t}`).join(', ')}}
@@ -770,6 +842,122 @@ if __name__ == "__main__":
         historial.append({"role": "user", "content": texto})
         respuesta = responder(historial)
         historial.append({"role": "assistant", "content": respuesta})
+        print("Agente:", respuesta)
+`;
+  }
+
+  /* ---------- exportar a Python con LangChain ---------- */
+  const ANNOT = {
+    calculadora: ['def calculadora(expresion):', 'def calculadora(expresion: str) -> str:'],
+    fecha_hora: ['def fecha_hora(zona="America/Bogota"):', 'def fecha_hora(zona: str = "America/Bogota") -> str:'],
+    clima: ['def clima(ciudad):', 'def clima(ciudad: str) -> str:']
+  };
+  function langchainScript(cfg, toolList, slug, vars) {
+    const py = x => JSON.stringify(x);
+    const sel = (cfg.tools || []).filter(t => ANNOT[t]);
+    const ragOn = !!(cfg.rag && cfg.rag.enabled);
+    const apis = (cfg.apis || []).filter(a => slugApi(a.name) && /^https:\/\//i.test(a.url));
+    const mem = cfg.memory || { mode: 'window', size: 6 };
+    const memN = mem.mode === 'none' ? 1 : mem.mode === 'full' ? 20 : mem.size;
+    const lines = (info.promptLines || []).filter(l => { const k = /\{(\w+)\}/.exec(l)[1]; return vars[k]; });
+    const desc = id => (toolList.find(t => t.id === id) || {}).description || id;
+    const pyFuncs = [];
+    sel.forEach(t => { const [a, b] = ANNOT[t]; pyFuncs.push(PY[t].replace(a, b)); });
+    if (ragOn) {
+      pyFuncs.push(`def buscar_conocimiento(consulta: str) -> str:
+    palabras = {w for w in consulta.lower().split() if len(w) > 2}
+    partes = [p.strip()[i:i + ${cfg.rag.chunk}] for p in CONOCIMIENTO.split("\\n\\n") if p.strip() for i in range(0, len(p.strip()), ${cfg.rag.chunk})]
+    ranking = sorted(partes, key=lambda p: -len(palabras & set(p.lower().split())))
+    return "\\n\\n".join(ranking[:${cfg.rag.k}]) or "No hay fragmentos relacionados."`);
+    }
+    if (apis.length) {
+      pyFuncs.push(`def _api(plantilla, **datos):
+    url = plantilla
+    for clave, valor in datos.items():
+        url = url.replace("{" + clave + "}", urllib.parse.quote(str(valor), safe=""))
+    with urllib.request.urlopen(url, timeout=10) as r:
+        return r.read(60000).decode("utf-8", "ignore")[:2000]`);
+      apis.forEach(a => { const ps = apiParams(a.url); pyFuncs.push(`def api_${slugApi(a.name)}(${ps.map(p => p + ': str').join(', ')}) -> str:\n    return _api(${py(a.url)}${ps.map(p => `, ${p}=${p}`).join('')})`); });
+    }
+    const toolDefs = [
+      ...sel.map(t => [t, desc(t)]),
+      ...(ragOn ? [['buscar_conocimiento', 'Busca fragmentos relevantes en los documentos del usuario.']] : []),
+      ...apis.map(a => ['api_' + slugApi(a.name), a.description || a.name])
+    ];
+    return `"""${(cfg.name || 'Agente').replace(/"/g, "'")} · agente con LangChain y Groq
+Generado en el Taller de Agentes de IA · Facultad de Ingeniería en Inteligencia Artificial, Universidad Santo Tomás.
+
+Cómo funciona: un ChatPromptTemplate arma las instrucciones con variables (nombre, personalidad, estilo,
+formato, reglas), ChatGroq pone el modelo y las herramientas se le enlazan con bind_tools.
+
+Uso:
+  pip install langchain-groq langchain-core
+  export GROQ_API_KEY=tu-clave   (la creas gratis en https://console.groq.com/keys)
+  python ${slug}.py
+"""
+import ast, json, math, operator, os, urllib.parse, urllib.request
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.tools import StructuredTool
+from langchain_groq import ChatGroq
+
+MODEL = ${py(cfg.model)}
+TEMPERATURE = ${Number(cfg.temperature) || 0}      # 0 = preciso · 1.5 = creativo
+MAX_TOKENS = ${(cfg.maxTokens || 700) + (/^(openai\/gpt-oss|qwen\/)/.test(cfg.model) ? 800 : 0)}
+MEMORIA = ${memN}      # cuántos mensajes recuerda (${mem.mode === 'none' ? 'sin memoria' : mem.mode === 'full' ? 'memoria completa' : 'ventana'})
+CONOCIMIENTO = ${py(cfg.knowledge || '')}
+
+# 1) La plantilla del prompt: cada {variable} se llena desde VARIABLES.
+PLANTILLA = ${py(lines.join('\n'))}
+VARIABLES = ${py(Object.fromEntries(lines.map(l => { const k = /\{(\w+)\}/.exec(l)[1]; return [k, vars[k]]; })))}
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", PLANTILLA),
+    MessagesPlaceholder("mensajes"),
+]).partial(**VARIABLES)
+
+# 2) Las herramientas
+${pyFuncs.join('\n\n')}
+
+HERRAMIENTAS = [
+${toolDefs.map(([n, d]) => `    StructuredTool.from_function(func=${n}, name=${py(n)}, description=${py(d)}),`).join('\n')}
+]
+
+# 3) El modelo y la cadena: prompt | modelo (con herramientas)
+llm = ChatGroq(model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS)
+cadena = prompt | (llm.bind_tools(HERRAMIENTAS) if HERRAMIENTAS else llm)
+
+
+def responder(mensajes):
+    """Bucle del agente: el modelo pide una herramienta, la ejecutamos y le devolvemos el resultado."""
+    por_nombre = {h.name: h for h in HERRAMIENTAS}
+    for _ in range(5):
+        ai = cadena.invoke({"mensajes": mensajes})
+        mensajes.append(ai)
+        if not ai.tool_calls:
+            return ai.content
+        for llamada in ai.tool_calls:
+            try:
+                salida = str(por_nombre[llamada["name"]].invoke(llamada["args"]))
+            except Exception as e:
+                salida = f"Error: {e}"
+            print(f"  [herramienta] {llamada['name']} -> {salida[:200]}")
+            mensajes.append(ToolMessage(content=salida, tool_call_id=llamada["id"]))
+    return "Demasiados pasos sin respuesta."
+
+
+if __name__ == "__main__":
+    historial = []
+    print(${py((cfg.name || 'Agente') + ' listo. Escribe "salir" para terminar.')})
+    while True:
+        texto = input("Tú: ").strip()
+        if texto.lower() in ("salir", "exit", ""):
+            break
+        respuesta = responder((historial + [HumanMessage(texto)])[-MEMORIA:])
+        historial += [HumanMessage(texto), AIMessage(respuesta)]
         print("Agente:", respuesta)
 `;
   }

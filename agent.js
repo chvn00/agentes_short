@@ -1,7 +1,25 @@
 // Lógica del agente: validación de la configuración, herramientas y bucle de razonamiento.
 // El modelo se inyecta (llm) para poder probar el bucle sin llamar a Groq.
 
-const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+// Groq retiró los Llama 3.x el 16/08/2026 para cuentas gratuitas. La lista real se pide a Groq (/api/models);
+// esta es solo la lista de respaldo.
+const MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
+const DEFAULT_MODEL = MODELS[0];
+const RENAMED = {
+  'llama-3.3-70b-versatile': 'openai/gpt-oss-120b', 'llama-3.1-8b-instant': 'openai/gpt-oss-20b',
+  'qwen/qwen3-32b': 'openai/gpt-oss-120b', 'meta-llama/llama-4-scout-17b-16e-instruct': 'openai/gpt-oss-120b', 'qwen/qwen3.6-27b': 'qwen/qwen3.8-27b'
+};
+const MODEL_ID = /^[a-z0-9][a-z0-9._\/-]{2,79}$/i;
+
+// Formas de estructurar la respuesta, elegibles por el estudiante.
+const FORMATS = {
+  libre: { label: 'Libre (sin formato fijo)', text: '' },
+  vinetas: { label: 'Viñetas cortas', text: 'Responde con una lista de viñetas cortas (máximo 5), una idea por viñeta.' },
+  pasos: { label: 'Pasos numerados', text: 'Responde con pasos numerados y claros: 1., 2., 3.' },
+  resumen: { label: 'Resumen y detalle', text: 'Empieza con un resumen de una sola línea y después da el detalle en pocas líneas.' },
+  json: { label: 'JSON', text: 'Responde únicamente con un objeto JSON válido, sin texto antes ni después ni bloques de código.' },
+  personalizado: { label: 'Personalizado', text: '' }
+};
 const MAX_STEPS = 5;
 
 // ---------- Calculadora segura (sin eval) ----------
@@ -197,6 +215,7 @@ function apiTool(a) {
 
 const str = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
 
+const modelOf = m => { const id = RENAMED[m] || m; return typeof id === 'string' && MODEL_ID.test(id) ? id : DEFAULT_MODEL; };
 const clampInt = (v, lo, hi, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 const MEMORY_MODES = ['none', 'window', 'full'];
 
@@ -215,7 +234,9 @@ function sanitizeConfig(raw = {}) {
   return {
     name: str(raw.name, 40) || 'Mi agente',
     system: str(raw.system, 3000),
-    model: MODELS.includes(raw.model) ? raw.model : MODELS[0],
+    model: modelOf(raw.model),
+    persona: str(raw.persona, 600), style: str(raw.style, 200), rules: str(raw.rules, 800),
+    format: raw.format in FORMATS ? raw.format : 'libre', formatCustom: str(raw.formatCustom, 600),
     temperature: Number.isFinite(t) ? Math.min(1.5, Math.max(0, t)) : 0.4,
     maxTokens: clampInt(raw.maxTokens, 100, 1500, 700),
     tools: tools.filter(n => n !== 'buscar_conocimiento').concat(ragOn ? ['buscar_conocimiento'] : []),
@@ -277,13 +298,41 @@ async function execTool(avail, cfg, name, args, ctx) {
   } catch (err) { return `Error: ${err.message}`; }
 }
 
-function buildSystem(cfg) {
-  const base = cfg.system.trim() || 'Eres un asistente útil. Responde en español, de forma clara y breve.';
+// Texto del formato elegido (o el que escribió el estudiante).
+const formatText = cfg => {
+  if (cfg.format === 'personalizado') return cfg.formatCustom.trim();
+  if (cfg.format === 'json' && cfg.formatCustom.trim()) return `${FORMATS.json.text} Claves del objeto: ${cfg.formatCustom.trim()}.`;
+  return FORMATS[cfg.format].text;
+};
+
+// Plantilla del prompt de sistema (la misma idea que un ChatPromptTemplate de LangChain):
+// cada línea usa una variable y solo se incluye si la persona la llenó.
+const PROMPT_LINES = [
+  ['nombre', 'Te llamas {nombre}.'],
+  ['personalidad', 'Personalidad: {personalidad}'],
+  ['estilo', 'Estilo y tono: {estilo}'],
+  ['formato', 'Formato de las respuestas: {formato}'],
+  ['reglas', 'Reglas que siempre cumples: {reglas}'],
+  ['instrucciones', '{instrucciones}'],
+  ['extras', '{extras}']
+];
+
+function promptVars(cfg) {
   const extra = [];
   if (cfg.tools.length || cfg.apis.length) extra.push('Cuando una herramienta pueda dar el dato exacto, úsala en vez de adivinar.');
   if (cfg.rag.enabled) extra.push('Para preguntas sobre las notas del usuario, consulta primero la herramienta buscar_conocimiento y responde solo con lo que encuentres.');
   else if (cfg.knowledge) extra.push('Notas del usuario:\n' + cfg.knowledge.slice(0, 6000));
-  return extra.length ? `${base}\n\n${extra.join('\n\n')}` : base;
+  const instr = cfg.system.trim();
+  const any = cfg.persona.trim() || cfg.style.trim() || formatText(cfg) || cfg.rules.trim() || instr;
+  return {
+    nombre: cfg.name.trim(), personalidad: cfg.persona.trim(), estilo: cfg.style.trim(), formato: formatText(cfg), reglas: cfg.rules.trim(),
+    instrucciones: instr || (any ? '' : 'Eres un asistente útil. Responde en español, de forma clara y breve.'), extras: extra.join('\n\n')
+  };
+}
+
+function buildSystem(cfg) {
+  const v = promptVars(cfg);
+  return PROMPT_LINES.filter(([k]) => v[k]).map(([k, line]) => line.replace(`{${k}}`, () => v[k])).join('\n');
 }
 
 // Ejecuta una herramienta fuera del bucle (lo usa el modo Ollama, cuyo bucle corre en el navegador).
@@ -295,7 +344,7 @@ async function runTool(rawConfig, name, args, fetchImpl = fetch, lookup) {
 // Lo que un cliente necesita para dirigir el modelo por su cuenta.
 function prepare(rawConfig) {
   const cfg = sanitizeConfig(rawConfig);
-  return { system: buildSystem(cfg), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
+  return { system: buildSystem(cfg), vars: promptVars(cfg), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
 }
 
-module.exports = { runTool, prepare, retrieve, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
+module.exports = { runTool, prepare, buildSystem, promptVars, PROMPT_LINES, FORMATS, DEFAULT_MODEL, retrieve, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
