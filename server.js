@@ -9,14 +9,14 @@ const { SESSION_KEY, encrypt, decrypt, safeEqual } = require('./secrets');
 const PORT = process.env.PORT || 3000;
 const ACCESS_CODE = process.env.ACCESS_CODE || '';
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || '').trim();
 const GROQ_BASE = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
 const pool = createPool();
 // La cuenta de administración se crea (o se actualiza) al arrancar con las variables de entorno.
 async function ensureAdmin() {
-  if (!ADMIN_USERNAME) return;
-  if (ADMIN_PASSWORD.length < 8) { console.warn('[WARN] ADMIN_PASSWORD falta o tiene menos de 8 caracteres: no se creó la cuenta de administración.'); return; }
+  if (!ADMIN_USERNAME) { console.warn('[WARN] ADMIN_USERNAME no está definido: no hay cuenta de administración. Defínelo (y ADMIN_PASSWORD) en las variables del servicio web y vuelve a desplegar.'); return; }
+  if (ADMIN_PASSWORD.length < 8) { console.warn(`[WARN] ADMIN_PASSWORD falta o tiene menos de 8 caracteres: no se creó la cuenta de administración (${ADMIN_USERNAME}).`); return; }
   const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
   const { rows } = await pool.query('SELECT id FROM users WHERE username = $1', [ADMIN_USERNAME]);
   if (rows[0]) await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, rows[0].id]);
