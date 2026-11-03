@@ -25,6 +25,16 @@ Cada estudiante crea su usuario y contraseña (con el código de clase, si el do
 
 Las contraseñas se guardan con `bcrypt`. Las sesiones son cookies `httpOnly` de 7 días. El registro admite 60 intentos por minuto por IP (un salón entero puede salir por una sola); el inicio de sesión se limita a 10 por minuto por cuenta.
 
+## Administración
+
+Si defines `ADMIN_USERNAME` y `ADMIN_PASSWORD`, esa cuenta se crea al arrancar y aparece la pestaña **👑 Administración**:
+
+- Lista de estudiantes con fecha de creación, última visita, si tienen API key de Groq, si conectaron Ollama, avance (puntos de control) y número de agentes; descarga en CSV.
+- Ver los agentes de cada estudiante, asignarle una contraseña nueva o borrar su cuenta.
+- **Clave de Groq del curso**: se guarda cifrada y la usa quien aún no tenga la suya.
+
+El administrador no ve las API keys de los estudiantes, solo si la tienen.
+
 ## Los dos modelos
 
 - **Groq (en la nube):** el módulo 0 guía la creación de la cuenta y la API key. Las consultas del agente usan la key de cada estudiante, así que la cuota no es del docente.
@@ -81,15 +91,16 @@ Abre `http://localhost:3000`. Sin `DATABASE_URL` usa una base en memoria (las cu
 |---|---|
 | `DATABASE_URL` | PostgreSQL. **Necesaria en producción** para que las cuentas sobrevivan a los reinicios |
 | `APP_SECRET` | Secreto largo y aleatorio: firma sesiones y cifra las API keys. **Necesaria en producción** |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Cuenta del docente (contraseña de 8 o más caracteres) |
 | `ACCESS_CODE` | Código de clase que se pide al crear la cuenta. Recomendado |
-| `GROQ_API_KEY` | Opcional: clave del servidor para quien aún no guardó la suya |
+| `GROQ_API_KEY` | Opcional: clave del servidor para quien aún no guardó la suya (también se puede guardar desde Administración) |
 | `PORT` | Puerto (Railway lo asigna solo) |
 
-**Railway:** conecta este repositorio, agrega un servicio **PostgreSQL** al proyecto y en las *Variables* del servicio web enlaza `DATABASE_URL` (referencia al Postgres) y define `APP_SECRET` y `ACCESS_CODE`.
+**Railway:** conecta este repositorio, agrega un servicio **PostgreSQL** al proyecto y en las *Variables* del servicio web enlaza `DATABASE_URL` (referencia al Postgres) y define `APP_SECRET`, `ACCESS_CODE`, `ADMIN_USERNAME` y `ADMIN_PASSWORD`.
 
 ## Límites conocidos
 
-- No hay recuperación de contraseña: si alguien la olvida, el docente debe borrar su fila de la tabla `users` para que cree la cuenta de nuevo.
+- No hay recuperación automática de contraseña: si alguien la olvida, el administrador le asigna una nueva desde la pestaña Administración.
 - Si cambias `APP_SECRET`, las sesiones se cierran y cada estudiante debe volver a guardar su API key.
 - La búsqueda en notas compara palabras clave, no significado (en el curso completo se ve RAG con embeddings).
 - El modo Ollama depende del navegador: usa Chrome o Edge y autoriza el origen de la página en Ollama (paso 5 del módulo 0).

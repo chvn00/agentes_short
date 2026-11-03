@@ -23,6 +23,12 @@ async function init(pool) {
     settings JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);
+  // Columna agregada después: en bases ya creadas hay que añadirla.
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ').catch(() => {});
+  await pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS agents (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,

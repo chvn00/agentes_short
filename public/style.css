@@ -125,3 +125,28 @@ pre.cmd button{position:absolute;right:8px;top:8px;border:0;background:rgba(255,
 @media(max-width:700px){.brand span{display:none}}
 .who[hidden]{display:none}
 .sstep>*:not(.num){grid-column:2;min-width:0}.sstep .num{grid-row:1 / span 12;align-self:start}
+
+/* Entrada: sin barra ni pie, tarjeta grande */
+body.guest .top,body.guest .foot{display:none}
+body.guest main{max-width:none;padding:0 16px;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.field input[type=password]{width:100%;border:1px solid #cfd6e4;border-radius:10px;padding:8px 10px;font:inherit;background:#fff}
+.auth{width:100%;max-width:600px;margin:0;padding:38px 46px 42px;border-radius:20px;box-shadow:0 14px 40px rgba(7,26,61,.12)}
+.auth .logoA{height:84px;margin-bottom:14px}
+.auth h1{font-size:30px!important;margin-bottom:6px}
+.auth .who2{font-size:16px;margin-bottom:22px}
+.auth .tabs button{padding:12px;font-size:16px}
+.auth .field label{font-size:15px}
+.auth .field input{padding:13px 15px;font-size:17px;border-radius:12px}
+.auth .btn{padding:14px;font-size:17px;margin-top:6px}
+.auth>p{font-size:16px}
+@media(max-width:560px){.auth{padding:26px 22px 30px}}
+/* Administración */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px}
+.stats .card{text-align:center}.stats b{display:block;font-size:30px;color:var(--blue)}.stats span{color:var(--muted);font-size:14px}
+.tablewrap{overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:14px}
+table.adm{border-collapse:collapse;width:100%;font-size:14px}
+table.adm th,table.adm td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+table.adm th{background:#eef2fb;color:var(--navy);font-size:13px}
+.acts{display:flex;gap:6px}.acts button{border:1px solid var(--border);background:#fff;border-radius:12px;padding:3px 10px;font-size:12.5px}.acts button:hover{background:#eef2fb}.acts .dng{color:#8a1f33}
+.sk{margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}.sk input{flex:1;min-width:240px;border:1px solid #cfd6e4;border-radius:10px;padding:8px 10px;font:inherit}
+.msg2{font-size:14px;margin:6px 0}.good{color:#237a3d;font-weight:700}.bad{color:#8a1f33}

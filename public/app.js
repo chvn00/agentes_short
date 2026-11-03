@@ -50,7 +50,7 @@
         ${err || msg ? `<p class="err">${esc(err || msg)}</p>` : ''}
         <form id="af" autocomplete="on">
           <div class="field"><label for="au">Usuario</label><input type="text" id="au" autocomplete="username" autocapitalize="none" required minlength="3" maxlength="30"></div>
-          <div class="field"><label for="ap">Contraseña</label><input type="password" id="ap" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" required minlength="${mode === 'login' ? 1 : 8}" style="width:100%;border:1px solid #cfd6e4;border-radius:10px;padding:8px 10px;font:inherit">${mode === 'register' ? '<p class="hint">Mínimo 8 caracteres. Usa una que no uses en otros sitios.</p>' : ''}</div>
+          <div class="field"><label for="ap">Contraseña</label><input type="password" id="ap" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" required minlength="${mode === 'login' ? 1 : 8}">${mode === 'register' ? '<p class="hint">Mínimo 8 caracteres. Usa una que no uses en otros sitios.</p>' : ''}</div>
           ${mode === 'register' && info.needsCode ? '<div class="field"><label for="ac">Código de clase</label><input type="text" id="ac" autocomplete="off" required><p class="hint">Te lo da el docente.</p></div>' : ''}
           ${mode === 'register' ? '<p class="hint" style="margin:0 0 10px">Usuario: letras minúsculas, números, punto, guion o guion bajo (3 a 30).</p>' : ''}
           <button class="btn" id="asub" type="submit" style="width:100%">${mode === 'login' ? 'Entrar' : 'Crear mi cuenta'}</button>
@@ -100,9 +100,9 @@
   setInterval(drawClock, 1000); drawClock();
 
   /* ---------- navegación ---------- */
-  const ROUTES = [['inicio', 'Inicio'], ...window.MODULES.map(m => [m.id, modLabel(m)]), ['constructor', '🛠 Constructor'], ['recursos', 'Recursos']];
+  const routes = () => [['inicio', 'Inicio'], ...window.MODULES.map(m => [m.id, modLabel(m)]), ['constructor', '🛠 Constructor'], ['recursos', 'Recursos'], ...(me && me.isAdmin ? [['admin', '👑 Administración']] : [])];
   function drawNav(cur) {
-    nav.innerHTML = ROUTES.map(([id, label]) => {
+    nav.innerHTML = routes().map(([id, label]) => {
       const m = window.MODULES.find(x => x.id === id);
       return `<a href="#${id}" class="${id === cur ? 'on' : ''}">${esc(label)}${m && moduleDone(m) ? '<span class="ok">✓</span>' : ''}</a>`;
     }).join('');
@@ -110,12 +110,13 @@
   function route() {
     if (!me) return;
     const id = (location.hash || '#inicio').slice(1);
-    const known = ROUTES.some(r => r[0] === id) ? id : 'inicio';
+    const known = routes().some(r => r[0] === id) ? id : 'inicio';
     drawNav(known);
     view.innerHTML = '';
     if (known === 'inicio') home();
     else if (known === 'constructor') builder();
     else if (known === 'recursos') resources();
+    else if (known === 'admin') adminPage();
     else lesson(window.MODULES.find(m => m.id === known));
     window.scrollTo(0, 0);
   }
@@ -231,6 +232,68 @@
     const r = await fetch(OLLAMA_URL + '/api/tags');
     if (!r.ok) throw new Error('Ollama no respondió');
     return ((await r.json()).models || []).map(m => m.name);
+  }
+
+  /* ---------- administración ---------- */
+  async function adminPage() {
+    view.innerHTML = '<div class="pagehead"><h1>👑 Administración</h1><p>Estudiantes, avance y clave de Groq del curso.</p></div><div id="admBox"><p>Cargando…</p></div>';
+    const box = $('#admBox');
+    let users, sk;
+    try { [users, sk] = await Promise.all([api('/api/admin/users'), api('/api/admin/shared-key')]); }
+    catch (e) { box.innerHTML = `<div class="notice">${esc(e.message)}</div>`; return; }
+
+    const modKeys = window.MODULES.flatMap(m => m.check.map((_, i) => m.id + '.' + i));
+    const done = u => modKeys.filter(k => u.progress && u.progress[k]).length;
+    const when = d => d ? new Date(d).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+    const students = users.filter(u => !u.isAdmin);
+    const pct = students.length ? Math.round(students.reduce((n, u) => n + done(u), 0) / (students.length * modKeys.length) * 100) : 0;
+
+    box.innerHTML = `
+      <div class="card"><h3>Clave de Groq del curso</h3>
+        <p style="margin-bottom:8px">Es opcional. La usan quienes todavía no guardaron su propia clave (cada estudiante puede guardar la suya en el módulo 0). Se guarda cifrada y nunca se muestra completa.</p>
+        <p class="msg2" id="skState">${sk.hasKey ? `<span class="good">✓ Guardada (${esc(sk.keyHint)})</span>` : sk.fromEnv ? '<span class="good">✓ Hay una clave definida en el servidor (variable GROQ_API_KEY)</span>' : '<span class="bad">Sin clave: cada estudiante necesita la suya.</span>'}</p>
+        <div class="act sk"><input type="password" id="skIn" placeholder="gsk_…" autocomplete="off"><button class="btn sm" id="skSave" type="button">Guardar y verificar</button>${sk.hasKey ? '<button class="btn sm sec" id="skDel" type="button">Borrar</button>' : ''}</div></div>
+      <div class="stats">
+        <div class="card"><b>${students.length}</b><span>estudiantes</span></div>
+        <div class="card"><b>${students.filter(u => u.hasKey).length}</b><span>con API key de Groq</span></div>
+        <div class="card"><b>${students.filter(u => u.ollamaOk).length}</b><span>con Ollama conectado</span></div>
+        <div class="card"><b>${pct}%</b><span>avance promedio</span></div>
+      </div>
+      <div class="row" style="justify-content:space-between;align-items:center;margin:18px 0 8px"><h2 class="sec-title" style="margin:0">Estudiantes</h2><button class="btn sm sec" id="csv" type="button">Descargar CSV</button></div>
+      <div class="tablewrap"><table class="adm"><thead><tr><th>Usuario</th><th>Creado</th><th>Última vez</th><th>Groq</th><th>Ollama</th><th>Avance</th><th>Agentes</th><th></th></tr></thead><tbody>
+      ${users.map(u => `<tr data-id="${u.id}"><td><b>${esc(u.username)}</b>${u.isAdmin ? ' <span class="pill y">admin</span>' : ''}</td><td>${when(u.createdAt)}</td><td>${when(u.lastSeen)}</td>
+        <td>${u.hasKey ? '✓' : '—'}</td><td>${u.ollamaOk ? '✓ ' + esc(u.ollamaModel || '') : '—'}</td><td>${done(u)}/${modKeys.length}</td><td>${u.agents}</td>
+        <td class="acts">${u.agents ? '<button type="button" data-a="ag">Ver agentes</button>' : ''}${u.isAdmin ? '' : '<button type="button" data-a="pw">Nueva contraseña</button><button type="button" data-a="del" class="dng">Borrar</button>'}</td></tr>`).join('') || '<tr><td colspan="8">Aún no hay usuarios.</td></tr>'}
+      </tbody></table></div><div id="agView"></div>`;
+
+    $('#skSave').onclick = async () => {
+      const key = $('#skIn').value.trim(), st = $('#skState'); if (!key) { st.innerHTML = '<span class="bad">Pega la clave primero.</span>'; return; }
+      st.textContent = 'Verificando con Groq…';
+      try { await api('/api/admin/shared-key', 'PUT', { key }); adminPage(); } catch (e) { st.innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+    };
+    if ($('#skDel')) $('#skDel').onclick = async () => { await api('/api/admin/shared-key', 'DELETE'); adminPage(); };
+
+    $('#csv').onclick = () => {
+      const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+      const head = ['usuario', 'creado', 'ultima_vez', 'groq', 'ollama', 'modelo_ollama', 'puntos_completados', 'puntos_totales', 'agentes'];
+      const rows = users.map(u => [u.username, u.createdAt || '', u.lastSeen || '', u.hasKey ? 'si' : 'no', u.ollamaOk ? 'si' : 'no', u.ollamaModel || '', done(u), modKeys.length, u.agents]);
+      const a = el('a', { href: URL.createObjectURL(new Blob(['﻿' + [head, ...rows].map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' })), download: 'estudiantes.csv' });
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+
+    box.querySelectorAll('tbody button').forEach(b => b.onclick = async () => {
+      const tr = b.closest('tr'), id = tr.dataset.id, name = tr.querySelector('b').textContent;
+      try {
+        if (b.dataset.a === 'ag') {
+          const list = await api(`/api/admin/users/${id}/agents`);
+          $('#agView').innerHTML = `<h2 class="sec-title">Agentes de ${esc(name)}</h2>` + list.map(a => `<div class="card" style="margin-bottom:10px"><h3>${esc(a.name)}</h3><p style="white-space:pre-wrap">${esc(a.config.system || '')}</p><p style="color:var(--muted);font-size:13px;margin-top:6px">Modelo: ${esc(a.config.model || '')} · Temperatura: ${esc(a.config.temperature)} · Herramientas: ${esc((a.config.tools || []).join(', ') || 'ninguna')}</p></div>`).join('');
+          $('#agView').scrollIntoView({ behavior: 'smooth' });
+        } else if (b.dataset.a === 'pw') {
+          const p = prompt(`Nueva contraseña para ${name} (mínimo 8 caracteres):`);
+          if (p) { await api(`/api/admin/users/${id}/password`, 'POST', { password: p }); alert('Contraseña cambiada. Entrégasela a la persona.'); }
+        } else if (confirm(`¿Borrar la cuenta de ${name} y todos sus agentes? No se puede deshacer.`)) { await api(`/api/admin/users/${id}`, 'DELETE'); adminPage(); }
+      } catch (e) { alert(e.message); }
+    });
   }
 
   /* ---------- recursos ---------- */

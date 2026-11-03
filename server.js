@@ -8,10 +8,28 @@ const { SESSION_KEY, encrypt, decrypt, safeEqual } = require('./secrets');
 
 const PORT = process.env.PORT || 3000;
 const ACCESS_CODE = process.env.ACCESS_CODE || '';
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const GROQ_BASE = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
 const pool = createPool();
-const ready = init(pool);
+// La cuenta de administración se crea (o se actualiza) al arrancar con las variables de entorno.
+async function ensureAdmin() {
+  if (!ADMIN_USERNAME) return;
+  if (ADMIN_PASSWORD.length < 8) { console.warn('[WARN] ADMIN_PASSWORD falta o tiene menos de 8 caracteres: no se creó la cuenta de administración.'); return; }
+  const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  const { rows } = await pool.query('SELECT id FROM users WHERE username = $1', [ADMIN_USERNAME]);
+  if (rows[0]) await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, rows[0].id]);
+  else await pool.query('INSERT INTO users (username, password_hash, progress, settings) VALUES ($1,$2,$3,$4)', [ADMIN_USERNAME, hash, {}, {}]);
+  console.log(`[INFO] Cuenta de administración lista: ${ADMIN_USERNAME}`);
+}
+const ready = init(pool).then(ensureAdmin);
+
+/* Clave de Groq compartida: la guarda el administrador en la base (cifrada) o viene del entorno */
+async function sharedKey() {
+  const { rows } = await pool.query('SELECT value FROM app_settings WHERE key = $1', ['shared_groq_key']);
+  return (rows[0] && decrypt(rows[0].value)) || process.env.GROQ_API_KEY || null;
+}
 
 /* ---------- Groq ---------- */
 function makeLlm(apiKey) {
@@ -64,6 +82,8 @@ function auth(req, res, next) {
   catch { res.status(401).json({ error: 'Inicia sesión para continuar' }); }
 }
 
+const isAdmin = req => !!ADMIN_USERNAME && req.user.username === ADMIN_USERNAME;
+function requireAdmin(req, res, next) { return isAdmin(req) ? next() : res.status(403).json({ error: 'Solo para el administrador' }); }
 const USERNAME = /^[a-z0-9_.-]{3,30}$/;
 const hint = key => 'gsk_…' + key.slice(-4);
 const clip = (o, max) => (o && typeof o === 'object' && !Array.isArray(o) && JSON.stringify(o).length <= max) ? o : null;
@@ -73,12 +93,12 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '100kb' }));
 
-app.get('/api/info', (req, res) => {
+app.get('/api/info', wrap(async (req, res) => {
   res.json({
-    needsCode: !!ACCESS_CODE, sharedKey: !!process.env.GROQ_API_KEY, models: MODELS,
+    needsCode: !!ACCESS_CODE, sharedKey: !!(await sharedKey()), models: MODELS,
     tools: Object.entries(TOOLS).map(([id, t]) => ({ id, label: t.label, description: t.def.function.description }))
   });
-});
+}));
 
 // El salón entero puede salir por una sola IP: el registro admite más tráfico y el login se limita por cuenta.
 const registerLimit = limiter(60);
@@ -87,6 +107,7 @@ app.post('/api/register', registerLimit, wrap(async (req, res) => {
   const { password, code } = req.body || {};
   const username = String((req.body || {}).username || '').trim().toLowerCase();
   if (ACCESS_CODE && !safeEqual(code || '', ACCESS_CODE)) return res.status(403).json({ error: 'El código de clase no es correcto.' });
+  if (username === ADMIN_USERNAME) return res.status(409).json({ error: 'Ese usuario ya existe. Elige otro.' });
   if (!USERNAME.test(username)) return res.status(400).json({ error: 'El usuario debe tener de 3 a 30 caracteres: letras minúsculas, números, punto, guion o guion bajo.' });
   if (typeof password !== 'string' || password.length < 8 || password.length > 100) return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres.' });
   if ((await pool.query('SELECT 1 FROM users WHERE username = $1', [username])).rows.length) return res.status(409).json({ error: 'Ese usuario ya existe. Elige otro.' });
@@ -112,7 +133,8 @@ app.get('/api/me', auth, wrap(async (req, res) => {
   const { rows } = await pool.query('SELECT username, groq_key, progress, settings FROM users WHERE id = $1', [req.user.id]);
   if (!rows[0]) return res.status(401).json({ error: 'La cuenta ya no existe' });
   const key = rows[0].groq_key ? decrypt(rows[0].groq_key) : null;
-  res.json({ username: rows[0].username, hasKey: !!key, keyHint: key ? hint(key) : null, progress: rows[0].progress, settings: rows[0].settings });
+  pool.query('UPDATE users SET last_seen = now() WHERE id = $1', [req.user.id]).catch(() => {});
+  res.json({ username: rows[0].username, isAdmin: isAdmin(req), hasKey: !!key, keyHint: key ? hint(key) : null, progress: rows[0].progress, settings: rows[0].settings });
 }));
 
 app.put('/api/me/state', auth, wrap(async (req, res) => {
@@ -162,8 +184,9 @@ app.delete('/api/agents/:name', auth, wrap(async (req, res) => {
 /* Agente con Groq: usa la API key de la persona (o la del servidor si existe) */
 app.post('/api/agent', auth, limiter(20, 60000, req => 'u' + req.user.id), wrap(async (req, res) => {
   const { rows } = await pool.query('SELECT groq_key FROM users WHERE id = $1', [req.user.id]);
-  const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key)) || process.env.GROQ_API_KEY;
+  const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key)) || await sharedKey();
   if (!key) return res.status(400).json({ error: 'Primero guarda tu API key de Groq (módulo 0, paso 2) o usa un modelo local con Ollama.' });
+  pool.query('UPDATE users SET last_seen = now() WHERE id = $1', [req.user.id]).catch(() => {});
   const { config, history } = req.body || {};
   res.json(await runAgent({ config, history, llm: makeLlm(key) }));
 }));
@@ -175,6 +198,63 @@ app.post('/api/tool', auth, limiter(60, 60000, req => 'u' + req.user.id), wrap(a
   const { config, name, args } = req.body || {};
   res.json({ result: await runTool(config, name, args && typeof args === 'object' ? args : {}) });
 }));
+
+/* ---------- Administración ---------- */
+const admin = express.Router();
+admin.use(auth, requireAdmin);
+
+admin.get('/users', wrap(async (req, res) => {
+  const { rows: users } = await pool.query('SELECT id, username, groq_key, progress, settings, created_at, last_seen FROM users ORDER BY created_at DESC');
+  const { rows: counts } = await pool.query('SELECT user_id, COUNT(*)::int AS n FROM agents GROUP BY user_id');
+  const n = new Map(counts.map(c => [c.user_id, c.n]));
+  res.json(users.map(u => ({
+    id: u.id, username: u.username, isAdmin: u.username === ADMIN_USERNAME, hasKey: !!(u.groq_key && decrypt(u.groq_key)),
+    progress: u.progress, ollamaOk: !!(u.settings && u.settings.ollamaOk), ollamaModel: (u.settings && u.settings.ollamaModel) || null,
+    agents: n.get(u.id) || 0, createdAt: u.created_at, lastSeen: u.last_seen
+  })));
+}));
+
+admin.get('/users/:id/agents', wrap(async (req, res) => {
+  const { rows } = await pool.query('SELECT name, config, updated_at FROM agents WHERE user_id = $1 ORDER BY updated_at DESC', [req.params.id]);
+  res.json(rows);
+}));
+
+admin.post('/users/:id/password', wrap(async (req, res) => {
+  const password = (req.body || {}).password;
+  if (typeof password !== 'string' || password.length < 8 || password.length > 100) return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres.' });
+  const upd = await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2 AND username <> $3', [await bcrypt.hash(password, 10), req.params.id, ADMIN_USERNAME]);
+  if (!upd.rowCount) return res.status(404).json({ error: 'Usuario no encontrado' });
+  res.json({ ok: true });
+}));
+
+admin.delete('/users/:id', wrap(async (req, res) => {
+  const { rows } = await pool.query('SELECT username FROM users WHERE id = $1', [req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
+  if (rows[0].username === ADMIN_USERNAME) return res.status(400).json({ error: 'No puedes borrar la cuenta de administración.' });
+  await pool.query('DELETE FROM agents WHERE user_id = $1', [req.params.id]);
+  await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Clave de Groq del curso: la usan quienes aún no guardaron la suya.
+admin.get('/shared-key', wrap(async (req, res) => {
+  const { rows } = await pool.query('SELECT value FROM app_settings WHERE key = $1', ['shared_groq_key']);
+  const k = rows[0] && decrypt(rows[0].value);
+  res.json({ hasKey: !!k, keyHint: k ? hint(k) : null, fromEnv: !k && !!process.env.GROQ_API_KEY });
+}));
+admin.put('/shared-key', wrap(async (req, res) => {
+  const key = String((req.body || {}).key || '').trim();
+  if (!/^gsk_[A-Za-z0-9]{20,}$/.test(key)) return res.status(400).json({ error: 'Esa clave no tiene el formato de Groq: empieza por gsk_.' });
+  if (!(await keyIsValid(key))) return res.status(400).json({ error: 'Groq no aceptó esa clave. Revisa que la copiaste completa.' });
+  await pool.query('DELETE FROM app_settings WHERE key = $1', ['shared_groq_key']);
+  await pool.query('INSERT INTO app_settings (key, value) VALUES ($1,$2)', ['shared_groq_key', encrypt(key)]);
+  res.json({ hasKey: true, keyHint: hint(key) });
+}));
+admin.delete('/shared-key', wrap(async (req, res) => {
+  await pool.query('DELETE FROM app_settings WHERE key = $1', ['shared_groq_key']);
+  res.json({ ok: true });
+}));
+app.use('/api/admin', admin);
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', (req, res) => res.status(404).json({ error: 'No encontrado' }));
