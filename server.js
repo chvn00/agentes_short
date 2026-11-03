@@ -14,6 +14,7 @@ const GROQ_BASE = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
 const pool = createPool();
 // La cuenta de administración se crea (o se actualiza) al arrancar con las variables de entorno.
+let adminReady = false;
 async function ensureAdmin() {
   if (!ADMIN_USERNAME) { console.warn('[WARN] ADMIN_USERNAME no está definido: no hay cuenta de administración. Defínelo (y ADMIN_PASSWORD) en las variables del servicio web y vuelve a desplegar.'); return; }
   if (ADMIN_PASSWORD.length < 8) { console.warn(`[WARN] ADMIN_PASSWORD falta o tiene menos de 8 caracteres: no se creó la cuenta de administración (${ADMIN_USERNAME}).`); return; }
@@ -21,6 +22,7 @@ async function ensureAdmin() {
   const { rows } = await pool.query('SELECT id FROM users WHERE username = $1', [ADMIN_USERNAME]);
   if (rows[0]) await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, rows[0].id]);
   else await pool.query('INSERT INTO users (username, password_hash, progress, settings) VALUES ($1,$2,$3,$4)', [ADMIN_USERNAME, hash, {}, {}]);
+  adminReady = true;
   console.log(`[INFO] Cuenta de administración lista: ${ADMIN_USERNAME}`);
 }
 const ready = init(pool).then(ensureAdmin);
@@ -95,7 +97,7 @@ app.use(express.json({ limit: '100kb' }));
 
 app.get('/api/info', wrap(async (req, res) => {
   res.json({
-    needsCode: !!ACCESS_CODE, sharedKey: !!(await sharedKey()), models: MODELS,
+    needsCode: !!ACCESS_CODE, adminReady, sharedKey: !!(await sharedKey()), models: MODELS,
     tools: Object.entries(TOOLS).map(([id, t]) => ({ id, label: t.label, description: t.def.function.description }))
   });
 }));

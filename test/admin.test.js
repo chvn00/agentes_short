@@ -45,6 +45,7 @@ async function call(method, path, body, cookie) {
 const GOOD = 'gsk_good' + 'C'.repeat(24);
 
 test('el administrador entra con las variables de entorno y su nombre queda reservado', async () => {
+  assert.strictEqual((await call('GET', '/api/info')).data.adminReady, true);
   const l = await call('POST', '/api/login', { username: 'profe', password: 'clave-del-profe-1' });
   assert.strictEqual(l.status, 200);
   assert.strictEqual((await call('GET', '/api/me', undefined, l.cookie)).data.isAdmin, true);
