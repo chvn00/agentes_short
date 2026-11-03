@@ -181,11 +181,11 @@ body::after{width:380px;height:380px;left:120px;bottom:-60px;background:rgba(232
 .side .who{justify-content:space-between;background:rgba(255,255,255,.6);border-radius:14px;padding:6px 8px 6px 12px}
 #burger,#scrim{display:none}
 main{margin:0 0 0 296px;max-width:none;padding:30px 36px 70px}
-main>*{max-width:1120px;margin-left:auto;margin-right:auto}
+main>*{max-width:1120px;margin-left:auto!important;margin-right:auto!important}
 .hero,.card,.panel,.status,.tablewrap{box-shadow:0 4px 18px rgba(13,58,173,.07)}
 body.guest .side,body.guest #burger,body.guest #scrim{display:none}
 body.guest main{margin:0;padding:0 16px}
-body.guest main>.auth{margin:0}
+body.guest main>.auth{margin:0!important}
 @media(max-width:960px){
   #burger{display:grid;place-items:center;position:fixed;z-index:40;top:12px;left:12px;width:44px;height:44px;border-radius:14px;border:1px solid rgba(255,255,255,.8);background:rgba(255,255,255,.7);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);font-size:20px;box-shadow:0 6px 18px rgba(13,58,173,.2)}
   .side{transform:translateX(-120%);transition:transform .25s ease}

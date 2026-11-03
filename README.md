@@ -101,7 +101,26 @@ Abre `http://localhost:3000`. Sin `DATABASE_URL` usa una base en memoria (las cu
 
 **Railway:** conecta este repositorio, agrega un servicio **PostgreSQL** al proyecto y en las *Variables* del servicio web enlaza `DATABASE_URL` (referencia al Postgres) y define `APP_SECRET`, `ACCESS_CODE`, `ADMIN_USERNAME` y `ADMIN_PASSWORD`.
 
-## Límites conocidos
+## Dar el taller desde tu propio computador (Mac)
+
+Todo corre en un solo Mac y el salón entra desde su navegador por la misma red Wi-Fi. Solo necesitas internet en ese Mac para Groq y las APIs; los celulares y portátiles de los estudiantes solo necesitan llegar al Mac.
+
+1. **Una vez:** `npm install` y crea un archivo `.env` a partir de `.env.example` con `APP_SECRET`, `ACCESS_CODE`, `ADMIN_USERNAME` y `ADMIN_PASSWORD`.
+2. **Para que las cuentas no se pierdan** (recomendado): instala PostgreSQL y apunta `DATABASE_URL` a él.
+
+   ```bash
+   brew install postgresql@16
+   brew services start postgresql@16
+   createdb agentes
+   # en .env:  DATABASE_URL=postgres://localhost/agentes
+   ```
+
+   Sin eso el taller funciona, pero las cuentas se borran si el servidor se reinicia.
+3. **Cada vez:** `./clase.sh`. Muestra la dirección para el salón (por ejemplo `http://192.168.1.17:3000`) y evita que el Mac se duerma.
+4. Si macOS pregunta si permites conexiones entrantes a `node`, acepta. El Mac y los estudiantes deben estar en la misma red, y esa red no puede aislar los dispositivos entre sí (algunas redes de universidad lo hacen).
+5. Para Ollama en el equipo de cada estudiante, el paso 5 del módulo 0 ya usa la dirección con la que entraron (`http://192.168.1.17:3000`), así que sirve igual.
+
+
 
 - No hay recuperación automática de contraseña: si alguien la olvida, el administrador le asigna una nueva desde la pestaña Administración.
 - Si cambias `APP_SECRET`, las sesiones se cierran y cada estudiante debe volver a guardar su API key.
