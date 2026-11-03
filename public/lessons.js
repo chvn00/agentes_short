@@ -1,7 +1,19 @@
 // Contenido del taller: agenda de 2 horas, módulos y agentes de ejemplo.
 window.MODULES = [
   {
-    id: 'm1', min: 15, title: 'Qué es un agente', icon: '🧭',
+    id: 'm0', min: 20, title: 'Prepara tu entorno', icon: '🧰', setup: true,
+    goal: 'Crear tu cuenta en Groq, instalar Ollama y dejar listos tus dos modelos.',
+    concepts: [
+      ['Groq (modelos en la nube)', 'Groq presta modelos muy rápidos con un plan gratuito. Necesitas una cuenta y una API key personal: es la llave que identifica tus consultas.'],
+      ['Ollama (modelos en tu equipo)', 'Ollama descarga el modelo a tu computador y lo corre sin internet. Es más lento que Groq, pero es tuyo y no tiene cuota.'],
+      ['Tu API key es privada', 'Nunca la compartas ni la pegues en chats. Aquí se guarda cifrada y solo la usa el servidor para tus consultas.'],
+      ['Mientras se descarga', 'El modelo de Ollama pesa unos 2 GB. Déjalo descargando y continúa con el módulo 1: no hace falta esperar.']
+    ],
+    steps: [], preset: null,
+    check: []
+  },
+  {
+    id: 'm1', min: 10, title: 'Qué es un agente', icon: '🧭',
     goal: 'Distinguir un chatbot de un agente y reconocer las cinco piezas de un agente.',
     concepts: [
       ['Chatbot', 'Responde con lo que aprendió. No puede consultar nada ni hacer nada fuera del texto.'],
@@ -18,7 +30,7 @@ window.MODULES = [
     check: ['Puedo explicar la diferencia entre chatbot y agente', 'Nombré las 5 piezas de un agente', 'Vi al asistente básico equivocarse o inventar un dato']
   },
   {
-    id: 'm2', min: 25, title: 'Instrucciones y parámetros', icon: '🎛️',
+    id: 'm2', min: 20, title: 'Instrucciones y parámetros', icon: '🎛️',
     goal: 'Escribir un prompt de sistema claro y entender qué cambian la temperatura y el modelo.',
     concepts: [
       ['Prompt de sistema', 'Una buena instrucción tiene: rol («Eres…»), tarea, tono, formato de la respuesta y límites («si no sabes, dilo»).'],
@@ -36,7 +48,7 @@ window.MODULES = [
     check: ['Identifiqué rol, tono, formato y límites en un prompt', 'Comparé temperatura 0 contra 1.2', 'Escribí el primer prompt de mi agente']
   },
   {
-    id: 'm3', min: 30, title: 'Herramientas', icon: '🔧',
+    id: 'm3', min: 25, title: 'Herramientas', icon: '🔧',
     goal: 'Dar herramientas a un agente y leer cómo decide usarlas.',
     concepts: [
       ['Llamada a herramientas', 'El modelo no ejecuta nada. Pide «usa la calculadora con esto»; el servidor la ejecuta y le devuelve el resultado para que continúe.'],
@@ -54,7 +66,7 @@ window.MODULES = [
     check: ['Vi la traza de una llamada a herramienta', 'Comparé el agente con y sin herramienta', 'Mi agente usa al menos una herramienta']
   },
   {
-    id: 'm4', min: 25, title: 'Conocimiento y memoria', icon: '📚',
+    id: 'm4', min: 20, title: 'Conocimiento y memoria', icon: '📚',
     goal: 'Hacer que el agente responda desde tus documentos y reconocer sus límites.',
     concepts: [
       ['Memoria de la conversación', 'El agente recuerda lo que se dijo porque le reenviamos los últimos mensajes. Si los borras (Nueva conversación), olvida todo.'],
@@ -72,13 +84,13 @@ window.MODULES = [
     check: ['Mi agente responde con datos de mis notas', 'Probé una pregunta que no está en las notas', 'Entendí cómo recuerda la conversación']
   },
   {
-    id: 'm5', min: 20, title: 'Reto: tu agente', icon: '🏁',
+    id: 'm5', min: 25, title: 'Reto: tu agente', icon: '🏁',
     goal: 'Terminar, probar y exportar un agente propio.',
     concepts: [
       ['Qué debe cumplir', 'Nombre y rol claros · al menos una herramienta o notas propias · límites escritos en el prompt · 3 pruebas que funcionen.'],
       ['Cómo se evalúa', 'Una prueba que debe funcionar, una que muestre una herramienta en la traza y una que muestre que el agente reconoce lo que no sabe.'],
       ['Exportar', 'Descarga la configuración (.json) para volver a cargarla, y el script de Python para correr el mismo agente fuera de esta página.'],
-      ['Siguiente paso', 'LangChain y LangGraph para agentes con varios pasos, FastAPI para publicarlos como servicio y Railway para ponerlos en línea: es el módulo completo de la maestría.']
+      ['Siguiente paso', 'LangChain y LangGraph para agentes con varios pasos, FastAPI para publicarlos como servicio y Railway para ponerlos en línea: es el curso completo de Agentes de IA.']
     ],
     steps: [
       'Termina tu agente en el Constructor: nombre, prompt, herramientas y notas.',
@@ -99,7 +111,7 @@ window.PRESETS = {
   },
   tutor: {
     name: 'Tutor de agentes de IA',
-    system: 'Eres un tutor de agentes de IA para estudiantes de maestría.\nTarea: explicar conceptos de forma clara, con un ejemplo corto.\nTono: cercano y profesional.\nFormato: máximo 4 líneas por respuesta; si hay pasos, usa una lista numerada.\nLímites: si la pregunta no trata de agentes, modelos de lenguaje o programación, dilo con amabilidad y redirige al tema.',
+    system: 'Eres un tutor de agentes de IA para estudiantes universitarios.\nTarea: explicar conceptos de forma clara, con un ejemplo corto.\nTono: cercano y profesional.\nFormato: máximo 4 líneas por respuesta; si hay pasos, usa una lista numerada.\nLímites: si la pregunta no trata de agentes, modelos de lenguaje o programación, dilo con amabilidad y redirige al tema.',
     model: 'llama-3.3-70b-versatile', temperature: 0.3, tools: [], knowledge: ''
   },
   herramientas: {

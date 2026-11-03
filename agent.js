@@ -192,4 +192,18 @@ function buildSystem(cfg) {
   return extra.length ? `${base}\n\n${extra.join('\n\n')}` : base;
 }
 
-module.exports = { calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
+// Ejecuta una herramienta fuera del bucle (lo usa el modo Ollama, cuyo bucle corre en el navegador).
+async function runTool(rawConfig, name, args, fetchImpl = fetch) {
+  const cfg = sanitizeConfig(rawConfig);
+  if (!TOOLS[name] || !cfg.tools.includes(name)) return `Error: La herramienta "${name}" no está activada`;
+  try { return String(await TOOLS[name].run(args || {}, { fetch: fetchImpl, knowledge: cfg.knowledge })).slice(0, 2000); }
+  catch (err) { return `Error: ${err.message}`; }
+}
+
+// Lo que un cliente necesita para dirigir el modelo por su cuenta.
+function prepare(rawConfig) {
+  const cfg = sanitizeConfig(rawConfig);
+  return { system: buildSystem(cfg), tools: cfg.tools.map(n => TOOLS[n].def), temperature: cfg.temperature };
+}
+
+module.exports = { runTool, prepare, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
