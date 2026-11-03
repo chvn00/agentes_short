@@ -114,7 +114,7 @@ pre.cmd button{position:absolute;right:8px;top:8px;border:0;background:rgba(255,
 .status .row2{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
 .pill{font-size:13px;font-weight:700;padding:3px 10px;border-radius:12px}.pill.y{background:#e3f6e8;color:#237a3d}.pill.n{background:#fff1d6;color:#8a5a00}
 
-.brand .logoU{height:38px;width:auto;display:block}
+.brand .logoU{height:66px;width:auto;display:block}
 .brand span{border-left:2px solid var(--border);padding-left:10px}
 .foot{display:grid;gap:4px;justify-items:center}.foot .logoF{height:44px;width:auto;margin-bottom:4px}.foot b{color:var(--navy)}
 .auth .logoA{display:block;height:52px;width:auto;margin:0 auto 10px}
@@ -152,3 +152,5 @@ table.adm th{background:#eef2fb;color:var(--navy);font-size:13px}
 .msg2{font-size:14px;margin:6px 0}.good{color:#237a3d;font-weight:700}.bad{color:#8a1f33}
 
 .adminCard{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;border-color:var(--gold);background:#fffaf0}.adminCard h3{margin:0 0 2px}
+
+.top{padding-top:8px;padding-bottom:8px}main{padding-bottom:60px}
