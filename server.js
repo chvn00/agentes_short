@@ -258,7 +258,8 @@ admin.delete('/shared-key', wrap(async (req, res) => {
 }));
 app.use('/api/admin', admin);
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Siempre revalidar: así un despliegue nuevo se ve al recargar y no queda una versión vieja en caché.
+app.use(express.static(path.join(__dirname, 'public'), { setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
 app.use('/api', (req, res) => res.status(404).json({ error: 'No encontrado' }));
 app.use((req, res) => res.status(404).send('No encontrado'));
 app.use((err, req, res, next) => {

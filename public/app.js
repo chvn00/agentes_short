@@ -134,6 +134,7 @@
         <p>Primero preparas tus modelos (Groq y Ollama), después aprendes las piezas de un agente y terminas con uno propio, probado y exportado.</p>
         <a class="btn" href="#m0">${moduleDone(window.MODULES[0]) ? 'Ir al módulo 1' : 'Empezar: prepara tu entorno'}</a>
         <div class="dir"><span>Facultad de Ingeniería en Inteligencia Artificial · Universidad Santo Tomás, Bucaramanga</span><span>Curso dirigido por <b>Dr.-Ing. Cesar Hernando Valencia Niño</b></span></div></section>
+      ${me.isAdmin ? '<div class="card adminCard"><div><h3>👑 Consola del docente</h3><p id="admSum">Estudiantes, avance, agentes y clave de Groq del curso.</p></div><a class="btn" href="#admin">Abrir consola</a></div>' : ''}
       <div class="status"><h3 style="margin:0">Tu entorno</h3>
         <div class="row2"><span>Cuenta en el taller</span><span class="pill y">✓ ${esc(me.username)}</span></div>
         <div class="row2"><span>Groq (modelo en la nube)</span><span class="pill ${me.hasKey ? 'y' : 'n'}">${me.hasKey ? '✓ API key ' + esc(me.keyHint) : 'Falta tu API key'}</span></div>
@@ -142,6 +143,7 @@
       <h2 class="sec-title">Agenda</h2>
       <ul class="agenda">${rows}</ul>
       <div class="card" style="margin-top:18px"><h3>Tu avance</h3><div class="bar"><i id="prog"></i></div><p id="progTxt" style="color:var(--muted);font-size:14px"></p></div>`;
+    if (me.isAdmin) api('/api/admin/users').then(u => { const st = u.filter(x => !x.isAdmin); $('#admSum').textContent = `${st.length} estudiante${st.length === 1 ? '' : 's'} registrado${st.length === 1 ? '' : 's'} · ${st.filter(x => x.hasKey).length} con API key de Groq · ${st.filter(x => x.ollamaOk).length} con Ollama`; }).catch(() => {});
     const d = doneChecks(), t = totalChecks();
     $('#prog').style.width = (d / t * 100) + '%';
     $('#progTxt').textContent = `${d} de ${t} puntos de control completados`;

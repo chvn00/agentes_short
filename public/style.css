@@ -150,3 +150,5 @@ table.adm th{background:#eef2fb;color:var(--navy);font-size:13px}
 .acts{display:flex;gap:6px}.acts button{border:1px solid var(--border);background:#fff;border-radius:12px;padding:3px 10px;font-size:12.5px}.acts button:hover{background:#eef2fb}.acts .dng{color:#8a1f33}
 .sk{margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}.sk input{flex:1;min-width:240px;border:1px solid #cfd6e4;border-radius:10px;padding:8px 10px;font:inherit}
 .msg2{font-size:14px;margin:6px 0}.good{color:#237a3d;font-weight:700}.bad{color:#8a1f33}
+
+.adminCard{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;border-color:var(--gold);background:#fffaf0}.adminCard h3{margin:0 0 2px}
