@@ -129,7 +129,10 @@ const TOOLS = {
   calculadora: {
     label: 'Calculadora',
     def: fn('calculadora', 'Evalúa una expresión matemática con + - * / % ^, paréntesis, sqrt, sin, cos, tan, log, ln, abs, round, pi y e. Úsala siempre que haya que calcular.', { expresion: { type: 'string', description: 'Ejemplo: 0.17 * 2350000' } }, ['expresion']),
-    run: async ({ expresion }) => String(calc(expresion))
+    run: async ({ expresion }) => {
+      try { return String(calc(expresion)); }
+      catch (e) { throw new Error(`${e.message}. Envía solo la expresión matemática como texto, por ejemplo 0.17*2350000`); }
+    }
   },
   fecha_hora: {
     label: 'Fecha y hora',

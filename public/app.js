@@ -35,7 +35,7 @@
   const settings = () => me.settings || {};
   const setSettings = patch => { me.settings = Object.assign({}, me.settings, patch); saveState(); };
 
-  const moduleDone = m => m.setup ? (me.hasKey || !!settings().ollamaOk) : m.check.every((_, i) => checks()[m.id + '.' + i]);
+  const moduleDone = m => m.setup ? (me.hasKey || info.sharedKey || !!info.serverOllama || !!settings().ollamaOk) : m.check.every((_, i) => checks()[m.id + '.' + i]);
   const totalChecks = () => window.MODULES.reduce((n, m) => n + m.check.length, 0);
   const doneChecks = () => window.MODULES.reduce((n, m) => n + m.check.filter((_, i) => checks()[m.id + '.' + i]).length, 0);
   const modLabel = m => m.id.slice(1) + '. ' + m.title;
@@ -136,15 +136,16 @@
     }).join('');
     view.innerHTML = `
       <section class="hero"><span class="kick">Taller de 2 horas</span><h1>Hola, ${esc(me.username)}: vamos a crear tu agente de IA</h1>
-        <p>Primero preparas tus modelos (Groq y Ollama), después aprendes las piezas de un agente y terminas con uno propio, probado y exportado.</p>
-        <a class="btn" href="#m0">${moduleDone(window.MODULES[0]) ? 'Ir al módulo 1' : 'Empezar: prepara tu entorno'}</a>
+        <p>Primero dejas listos tus modelos (todo desde el navegador, sin instalar nada), después aprendes las piezas de un agente y terminas con uno propio, probado y guardado en tu cuenta.</p>
+        <a class="btn" href="#m0">${moduleDone(window.MODULES[0]) ? 'Ir al módulo 1' : 'Empezar: prepara tus modelos'}</a>
         <div class="dir"><span>Facultad de Ingeniería en Inteligencia Artificial · Universidad Santo Tomás, Bucaramanga</span><span>Curso dirigido por <b>Dr.-Ing. Cesar Hernando Valencia Niño</b></span></div></section>
       ${me.isAdmin ? '<div class="card adminCard"><div><h3>👑 Consola del docente</h3><p id="admSum">Estudiantes, avance, agentes y clave de Groq del curso.</p></div><a class="btn" href="#admin">Abrir consola</a></div>' : ''}
       <div class="status"><h3 style="margin:0">Tu entorno</h3>
         <div class="row2"><span>Cuenta en el taller</span><span class="pill y">✓ ${esc(me.username)}</span></div>
-        <div class="row2"><span>Groq (modelo en la nube)</span><span class="pill ${me.hasKey ? 'y' : 'n'}">${me.hasKey ? '✓ API key ' + esc(me.keyHint) : 'Falta tu API key'}</span></div>
-        <div class="row2"><span>Ollama (modelo en tu equipo)</span><span class="pill ${settings().ollamaOk ? 'y' : 'n'}">${settings().ollamaOk ? '✓ ' + esc(settings().ollamaModel || 'conectado') : 'Sin conectar'}</span></div>
-        ${me.hasKey && settings().ollamaOk ? '' : '<a href="#m0">Completar en el módulo 0 →</a>'}</div>
+        <div class="row2"><span>Groq con tu propia clave</span><span class="pill ${me.hasKey ? 'y' : 'n'}">${me.hasKey ? '✓ API key ' + esc(me.keyHint) : 'Sin clave propia'}</span></div>
+        <div class="row2"><span>Groq con la clave del curso</span><span class="pill ${info.sharedKey ? 'y' : 'n'}">${info.sharedKey ? '✓ Habilitada por el docente' : 'No habilitada'}</span></div>
+        <div class="row2"><span>Modelos locales del servidor (sin instalar nada)</span><span class="pill ${info.serverOllama ? 'y' : 'n'}">${info.serverOllama ? '✓ ' + info.serverOllama.map(esc).join(', ') : 'No disponibles'}</span></div>
+        ${moduleDone(window.MODULES[0]) ? '' : '<a href="#m0">Completar en el módulo 0 →</a>'}</div>
       <h2 class="sec-title">Agenda</h2>
       <ul class="agenda">${rows}</ul>
       <div class="card" style="margin-top:18px"><h3>Tu avance</h3><div class="bar"><i id="prog"></i></div><p id="progTxt" style="color:var(--muted);font-size:14px"></p></div>`;
@@ -181,13 +182,19 @@
     const box = $('#setup'), origin = location.origin;
     const own = k => `<label class="self"><input type="checkbox" data-s="${k}" ${checks()[k] ? 'checked' : ''}> Ya lo hice</label>`;
     box.innerHTML = `
-      <div class="sstep ${checks()['s.groq'] ? 'ok' : ''}"><div class="num">1</div><h3>Crea tu cuenta en Groq</h3>
+      <div class="status" style="margin:0 0 4px"><h3 style="margin:0">Modelos que ya puedes usar</h3>
+        <div class="row2"><span>Modelos locales del servidor</span><span class="pill ${info.serverOllama ? 'y' : 'n'}">${info.serverOllama ? '✓ ' + info.serverOllama.map(esc).join(', ') : 'No disponibles'}</span></div>
+        <div class="row2"><span>Groq con la clave del curso</span><span class="pill ${info.sharedKey ? 'y' : 'n'}">${info.sharedKey ? '✓ Habilitada' : 'No habilitada'}</span></div>
+        <div class="row2"><span>Groq con tu propia clave</span><span class="pill ${me.hasKey ? 'y' : 'n'}">${me.hasKey ? '✓ Guardada' : 'Pendiente'}</span></div>
+        <p style="margin:6px 0 0;color:var(--muted);font-size:14px"><b>No necesitas instalar nada.</b> Con cualquiera de los tres ya puedes crear agentes. Los pasos 1 y 2 son para tener tu propia clave de Groq (así no compartes el límite con el grupo).</p></div>
+      <div class="sstep ${checks()['s.groq'] ? 'ok' : ''}"><div class="num">1</div><h3>Crea tu cuenta en Groq <small style="font-weight:400;color:var(--muted)">(opcional si el docente habilitó la clave del curso)</small></h3>
         <ol><li>Abre <b>console.groq.com</b> y pulsa <b>Sign up</b>.</li><li>Entra con Google, GitHub o tu correo.</li><li>Si te pide confirmar el correo, confírmalo y vuelve a entrar.</li></ol>
         <div class="act"><a class="btn sm" href="https://console.groq.com" target="_blank" rel="noopener">Abrir Groq ↗</a>${own('s.groq')}</div></div>
       <div class="sstep ${me.hasKey ? 'ok' : ''}"><div class="num">2</div><h3>Crea tu API key y guárdala aquí</h3>
         <ol><li>En Groq, en el menú de la izquierda, abre <b>API Keys</b>.</li><li>Pulsa <b>Create API Key</b>, ponle un nombre (por ejemplo «taller») y créala.</li><li>Cópiala ya: empieza por <b>gsk_</b> y solo se muestra una vez.</li><li>Pégala abajo. La verifico con Groq y la guardo cifrada en tu cuenta.</li></ol>
         <div class="act"><input type="password" id="gk" placeholder="${me.hasKey ? 'Guardada (' + esc(me.keyHint) + '). Pega otra para reemplazarla' : 'gsk_…'}" autocomplete="off"><button class="btn sm" id="gkSave" type="button">Guardar y verificar</button>${me.hasKey ? '<button class="btn sm sec" id="gkDel" type="button">Borrar mi clave</button>' : ''}</div>
         <p class="msg2" id="gkMsg">${me.hasKey ? '<span class="good">✓ Tu clave está guardada. Ya puedes usar modelos de Groq.</span>' : ''}</p></div>
+      <details class="optLocal"><summary>Opcional y avanzado · usar Ollama en tu propio equipo <small>(requiere instalar programas: no es necesario en este taller)</small></summary>
       <div class="sstep ${checks()['s.ollama'] ? 'ok' : ''}"><div class="num">3</div><h3>Instala Ollama</h3>
         <ol><li>Entra a <b>ollama.com/download</b> y descarga el instalador de tu sistema (Mac, Windows o Linux).</li><li>Ábrelo y sigue la instalación. Al terminar, Ollama queda corriendo en segundo plano.</li><li>En Linux, en vez del instalador: ejecuta el comando de abajo.</li></ol>
         ${cmd('curl -fsSL https://ollama.com/install.sh | sh')}
@@ -206,7 +213,8 @@
       <div class="sstep ${settings().ollamaOk ? 'ok' : ''}"><div class="num">6</div><h3>Prueba la conexión con Ollama</h3>
         <p style="margin:2px 0;color:#3b4252">Usa Chrome o Edge. Si el navegador pregunta si permites conectarse a dispositivos de tu red local, acepta.</p>
         <div class="act"><button class="btn sm" id="olTest" type="button">Probar conexión</button><select id="olModel" hidden></select></div>
-        <p class="msg2" id="olMsg">${settings().ollamaOk ? `<span class="good">✓ Conectado. Modelo elegido: ${esc(settings().ollamaModel || '')}</span>` : ''}</p></div>`;
+        <p class="msg2" id="olMsg">${settings().ollamaOk ? `<span class="good">✓ Conectado. Modelo elegido: ${esc(settings().ollamaModel || '')}</span>` : ''}</p></div>
+      </details>`;
 
     box.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = '¡Copiado!'; } catch (e) { b.textContent = 'Selecciona y copia'; } setTimeout(() => { b.textContent = 'Copiar'; }, 1500); });
     box.querySelectorAll('[data-s]').forEach(c => c.onchange = () => { setCheck(c.dataset.s, c.checked); c.closest('.sstep').classList.toggle('ok', c.checked); });
@@ -393,10 +401,12 @@
     cfg.maxTokens = cfg.maxTokens || 700;
     cfg.tools = (cfg.tools || []).filter(t => t !== 'buscar_conocimiento');
     let chat = store.get('chat', []);
-    let provider = settings().provider === 'ollama' ? 'ollama' : 'groq';
+    const canGroq = me.hasKey || info.sharedKey, canServer = !!info.serverOllama, canLocal = !!settings().ollamaOk;
+    let provider = settings().provider;
+    if (!(provider === 'groq' || (provider === 'server' && canServer) || (provider === 'ollama' && canLocal))) provider = canGroq || !canServer ? 'groq' : 'server';
     const save = () => store.set('cfg', cfg);
     const toolList = info.tools.filter(t => t.id !== 'buscar_conocimiento');
-    const noKey = !me.hasKey && !info.sharedKey;
+    const noKey = !canGroq;
 
     view.innerHTML = `
       <div id="warn"></div>
@@ -406,7 +416,7 @@
           <div class="field"><label for="preset">Empezar desde un ejemplo</label><select id="preset"><option value="">— elige —</option>${Object.entries(window.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.name)}</option>`).join('')}</select></div>
 
           <details class="sec" open><summary><span class="n">1</span>Modelo y temperatura</summary><div class="body">
-            <div class="field"><label for="prov">Dónde corre el modelo</label><select id="prov"><option value="groq">En la nube · Groq (tu API key)</option><option value="ollama">En mi equipo · Ollama</option></select></div>
+            <div class="field"><label for="prov">Dónde corre el modelo</label><select id="prov"><option value="groq">En la nube · Groq</option>${canServer ? '<option value="server">Modelos locales del servidor (sin instalar nada)</option>' : ''}${canLocal ? '<option value="ollama">En mi equipo · Ollama</option>' : ''}</select></div>
             <div class="field"><label for="model" id="modelLbl">Modelo</label><select id="model"></select></div>
             <div class="field"><label for="temp">Temperatura: <b id="tv"></b></label><input type="range" id="temp" min="0" max="1.5" step="0.1" style="width:100%"><div class="scale"><span>0 · preciso y repetible</span><span>1.5 · creativo y variable</span></div>
               <div class="row" style="margin-top:6px"><button type="button" class="btn sm sec" data-temp="0">Preciso · 0</button><button type="button" class="btn sm sec" data-temp="0.5">Equilibrado · 0.5</button><button type="button" class="btn sm sec" data-temp="1.2">Creativo · 1.2</button></div>
@@ -443,7 +453,7 @@
           <details class="sec" open><summary><span class="n">5</span>Conocimiento (RAG)</summary><div class="body">
             <label class="tool" style="padding-top:0"><input type="checkbox" id="ragOn"><div><b>Activar RAG</b><span>El agente busca en tus documentos antes de responder y cita lo que encuentra. Sin RAG, el texto se le envía completo como contexto.</span></div></label>
             <div class="field"><label for="kn">Tus documentos</label><textarea id="kn" rows="5" maxlength="60000" placeholder="Pega aquí el texto o carga archivos: se juntan todos en este cuadro."></textarea>
-              <div class="row" style="margin-top:6px;align-items:center"><button class="btn sm sec" id="knFile" type="button">Cargar PDF, .md, .txt o .csv</button><button class="btn sm sec" id="knClear" type="button">Vaciar</button><input type="file" id="knFileIn" accept=".pdf,.md,.markdown,.txt,.csv,application/pdf,text/markdown,text/plain,text/csv" multiple hidden><small id="knCount"></small></div><small id="knMsg" style="display:block;margin-top:4px"></small></div>
+              <div class="row" style="margin-top:6px;align-items:center"><select id="knSample" style="max-width:100%"><option value="">+ Documento de ejemplo…</option>${Object.entries(window.SAMPLE_DOCS).map(([k, d]) => `<option value="${k}">${esc(d.title)}</option>`).join('')}</select><button class="btn sm sec" id="knFile" type="button">Cargar PDF, .md, .txt o .csv</button><button class="btn sm sec" id="knClear" type="button">Vaciar</button><input type="file" id="knFileIn" accept=".pdf,.md,.markdown,.txt,.csv,application/pdf,text/markdown,text/plain,text/csv" multiple hidden><small id="knCount"></small></div><small id="knMsg" style="display:block;margin-top:4px"></small></div>
             <div class="grid2">
               <div class="field"><label for="ragK">Fragmentos a recuperar: <b id="rkv"></b></label><input type="range" id="ragK" min="1" max="5" step="1" style="width:100%"></div>
               <div class="field"><label for="ragChunk">Tamaño de fragmento</label><select id="ragChunk"><option value="300">Pequeño (300)</option><option value="600">Mediano (600)</option><option value="1000">Grande (1000)</option></select></div>
@@ -451,24 +461,34 @@
             <div class="field"><label for="ragQ">Probar la búsqueda</label><div class="row"><input type="text" id="ragQ" placeholder="Escribe una pregunta de prueba" style="flex:1;min-width:0"><button class="btn sm" id="ragGo" type="button">Buscar</button></div><div id="ragOut"></div></div>
           </div></details>
 
-          <div class="row"><button class="btn sm" id="dlJson" type="button">Descargar .json</button><button class="btn sm sec" id="dlLc" type="button">Python con LangChain</button><button class="btn sm sec" id="dlPy" type="button">Python con Groq</button><button class="btn sm sec" id="imp" type="button">Cargar .json</button><input type="file" id="impFile" accept=".json,application/json" hidden></div>
+          <div class="row"><button class="btn sm" id="dlJson" type="button">Ver / copiar .json</button><button class="btn sm sec" id="dlLc" type="button">Python con LangChain</button><button class="btn sm sec" id="dlPy" type="button">Python con Groq</button><button class="btn sm sec" id="imp" type="button">Pegar .json</button></div>
         </section>
         <section class="panel chat"><div class="row" style="justify-content:space-between;align-items:center"><h2 id="title" style="margin:0"></h2><button class="btn sm sec" id="clear" type="button">Nueva conversación</button></div>
           <div class="sumry" id="sumry"></div>
           <div class="msgs" id="msgs" aria-live="polite"></div>
           <form class="composer" id="form"><input type="text" id="q" placeholder="Escribe un mensaje…" maxlength="2000" autocomplete="off"><button class="btn" id="send" type="submit">Enviar</button></form>
         </section>
-      </div>`;
+      </div>
+      <dialog id="pasteDlg" class="codeDlg"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Pegar la configuración de un agente</h3><button class="btn sm sec" id="pasteClose" type="button">Cerrar</button></div>
+        <textarea id="pasteText" spellcheck="false" placeholder="Pega aquí el contenido del .json"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn sm" id="pasteLoad" type="button">Cargar en el Constructor</button><small id="pasteMsg" class="bad"></small></div></dialog>
+      <dialog id="codeDlg" class="codeDlg"><div class="row" style="justify-content:space-between;align-items:center"><h3 id="codeTitle" style="margin:0"></h3><button class="btn sm sec" id="codeClose" type="button">Cerrar</button></div>
+        <p style="color:var(--muted);font-size:13.5px;margin:6px 0" id="codeHelp"></p>
+        <textarea id="codeText" readonly spellcheck="false"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn sm" id="codeCopy" type="button">Copiar todo</button><button class="btn sm sec" id="codeSave" type="button">Descargar archivo (si tu equipo lo permite)</button><small id="codeMsg"></small></div></dialog>`;
 
     const f = {}; ['preset', 'prov', 'name', 'system', 'model', 'modelLbl', 'temp', 'tv', 'maxtok', 'mtv', 'memMode', 'memSize', 'msv', 'memSizeBox', 'apis', 'apiEx', 'ragOn', 'kn', 'knCount', 'ragK', 'rkv', 'ragChunk', 'ragQ', 'persona', 'style', 'format', 'formatCustom', 'rules', 'promptPrev', 'ragOut', 'tempExp', 'memExp', 'knMsg', 'msgs', 'form', 'q', 'send', 'title', 'warn', 'mine', 'mineMsg', 'sumry'].forEach(id => f[id] = $('#' + id));
 
     function drawWarn() {
-      f.warn.innerHTML = provider === 'groq' && noKey ? '<div class="notice">Todavía no guardaste tu API key de Groq. Hazlo en el <a href="#m0">módulo 0, paso 2</a>, o cambia a «Ollama».</div>'
-        : provider === 'ollama' && !settings().ollamaOk ? '<div class="notice">Todavía no conectaste Ollama. Haz los pasos 3 a 6 del <a href="#m0">módulo 0</a>, o cambia a «Groq».</div>' : '';
+      f.warn.innerHTML = provider === 'groq' && noKey ? `<div class="notice">Todavía no hay clave de Groq para ti. Guárdala en <a href="#cuenta">Mi cuenta</a>${canServer ? ', o cambia a «Modelos locales del servidor»' : ''}; también puedes pedirle al docente que habilite la del curso.</div>` : '';
     }
     function fillModels() {
-      if (provider === 'ollama') {
-        f.modelLbl.textContent = 'Modelo local (Ollama)';
+      if (provider === 'server') {
+        f.modelLbl.textContent = 'Modelo local del servidor';
+        const cur = settings().serverModel, list = info.serverOllama || [];
+        f.model.innerHTML = list.map(n => `<option ${n === (cur || list[0]) ? 'selected' : ''}>${esc(n)}</option>`).join('');
+      } else if (provider === 'ollama') {
+        f.modelLbl.textContent = 'Modelo local (Ollama en tu equipo)';
         const cur = settings().ollamaModel;
         f.model.innerHTML = `<option>${esc(cur || 'sin conectar')}</option>`;
         ollamaModels().then(names => { if (provider === 'ollama' && names.length) { f.model.innerHTML = names.map(n => `<option ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join(''); } }).catch(() => {});
@@ -532,7 +552,9 @@
       cfg.name = f.name.value; cfg.system = f.system.value; cfg.persona = f.persona.value; cfg.style = f.style.value; cfg.rules = f.rules.value;
       cfg.format = f.format.value; cfg.formatCustom = f.formatCustom.value; drawFormat(); cfg.temperature = parseFloat(f.temp.value); cfg.maxTokens = parseInt(f.maxtok.value, 10);
       cfg.knowledge = f.kn.value;
-      if (provider === 'groq') cfg.model = f.model.value; else if (f.model.value !== (settings().ollamaModel || '')) setSettings({ ollamaModel: f.model.value });
+      if (provider === 'groq') cfg.model = f.model.value;
+      else if (provider === 'server') { if (f.model.value !== settings().serverModel) setSettings({ serverModel: f.model.value }); }
+      else if (f.model.value !== (settings().ollamaModel || '')) setSettings({ ollamaModel: f.model.value });
       cfg.memory = { mode: f.memMode.value, size: parseInt(f.memSize.value, 10) };
       cfg.rag = { enabled: f.ragOn.checked, k: parseInt(f.ragK.value, 10), chunk: parseInt(f.ragChunk.value, 10) };
       cfg.tools = [...view.querySelectorAll('[data-tool]')].filter(c => c.checked).map(c => c.dataset.tool);
@@ -547,6 +569,7 @@
     view.querySelectorAll('[data-temp]').forEach(b => b.onclick = () => { f.temp.value = b.dataset.temp; read(); });
     if (!groqModels) api('/api/models').then(r => { groqModels = r.models; if (provider === 'groq' && f.model.isConnected) fillModels(); }).catch(() => {});
     f.prov.onchange = () => { provider = f.prov.value; setSettings({ provider }); fillModels(); drawWarn(); };
+    f.prov.value = provider;
     f.preset.onchange = () => { if (f.preset.value) { setCfg(window.PRESETS[f.preset.value]); chat = []; store.set('chat', chat); drawChat(); } f.preset.value = ''; };
     function setCfg(o) {
       const c = JSON.parse(JSON.stringify(o));
@@ -579,6 +602,11 @@
 
     /* RAG: archivo y prueba de búsqueda */
     $('#knFile').onclick = () => $('#knFileIn').click();
+    $('#knSample').onchange = e => {
+      const d = window.SAMPLE_DOCS[e.target.value]; e.target.value = ''; if (!d) return;
+      const block = (f.kn.value ? '\n\n' : '') + `# ${d.title}\n\n` + d.text;
+      f.kn.value = (f.kn.value + block).slice(0, 60000); read(); f.knMsg.textContent = `Se agregó «${d.title}».`;
+    };
     $('#knClear').onclick = () => { f.kn.value = ''; f.knMsg.textContent = ''; read(); };
     $('#knFileIn').onchange = async e => {
       const files = [...e.target.files]; e.target.value = ''; const notes = [];
@@ -678,6 +706,7 @@
     }
     const ask = text => {
       const history = chat.map(m => ({ role: m.role, content: m.content })).concat({ role: 'user', content: text });
+      if (provider === 'server') return api('/api/agent', 'POST', { config: cfg, history, provider: 'server', ollamaModel: f.model.value });
       return provider === 'ollama' ? askOllama(history) : api('/api/agent', 'POST', { config: cfg, history });
     };
     f.form.onsubmit = async e => {
@@ -696,19 +725,36 @@
     /* exportar / importar */
     const download = (name, text, type) => { const a = el('a', { href: URL.createObjectURL(new Blob([text], { type })), download: name }); document.body.appendChild(a); a.click(); a.remove(); };
     const slug = () => (cfg.name || 'agente').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'agente';
-    $('#dlJson').onclick = () => { read(); download(slug() + '.json', JSON.stringify(cfg, null, 2), 'application/json'); };
+    let codeFile = '', codeMime = 'text/plain';
+    function showCode(title, help, text, file, mime) {
+      $('#codeTitle').textContent = title; $('#codeHelp').textContent = help; $('#codeText').value = text; $('#codeMsg').textContent = '';
+      codeFile = file; codeMime = mime; $('#codeDlg').showModal();
+    }
+    $('#codeClose').onclick = () => $('#codeDlg').close();
+    $('#codeCopy').onclick = async () => {
+      const ta = $('#codeText'); ta.select();
+      let ok = false;
+      try { await navigator.clipboard.writeText(ta.value); ok = true; } catch (e) { try { ok = document.execCommand('copy'); } catch (e2) { /* sin portapapeles */ } }
+      $('#codeMsg').textContent = ok ? '✓ Copiado' : 'Selecciona el texto y cópialo con Ctrl/Cmd + C';
+    };
+    $('#codeSave').onclick = () => download(codeFile, $('#codeText').value, codeMime);
+    $('#dlJson').onclick = () => { read(); showCode('Configuración de tu agente (.json)', 'Cópiala y guárdala donde quieras; después puedes pegarla en un archivo .json y cargarla con «Cargar .json».', JSON.stringify(cfg, null, 2), slug() + '.json', 'application/json'); };
     $('#dlLc').onclick = async () => {
       read();
-      try { const p = await api('/api/prepare', 'POST', { config: cfg }); download(slug() + '_langchain.py', langchainScript(cfg, toolList, slug() + '_langchain', p.vars), 'text/x-python'); } catch (e) { alert(e.message); }
+      try { const p = await api('/api/prepare', 'POST', { config: cfg }); showCode('Script de Python con LangChain', 'Es tu mismo agente como código. Para ejecutarlo hace falta Python con langchain-groq: sirve para llevártelo después del taller.', langchainScript(cfg, toolList, slug() + '_langchain', p.vars), slug() + '_langchain.py', 'text/x-python'); } catch (e) { alert(e.message); }
     };
     $('#dlPy').onclick = async () => {
       read();
-      try { const p = await api('/api/prepare', 'POST', { config: cfg }); download(slug() + '.py', pythonScript(cfg, toolList, slug(), p.system), 'text/x-python'); } catch (e) { alert(e.message); }
+      try { const p = await api('/api/prepare', 'POST', { config: cfg }); showCode('Script de Python con Groq', 'Tu mismo agente con la librería de Groq. Para ejecutarlo hace falta Python con el paquete groq.', pythonScript(cfg, toolList, slug(), p.system), slug() + '.py', 'text/x-python'); } catch (e) { alert(e.message); }
     };
-    $('#imp').onclick = () => $('#impFile').click();
-    $('#impFile').onchange = async e => {
-      try { const o = JSON.parse(await e.target.files[0].text()); setCfg(Object.assign({}, o, { name: String(o.name || 'Mi agente'), system: String(o.system || ''), temperature: Number(o.temperature) || 0.4, knowledge: String(o.knowledge || '') })); }
-      catch (err) { alert('El archivo no es una configuración válida.'); }
+    $('#imp').onclick = () => { $('#pasteText').value = ''; $('#pasteMsg').textContent = ''; $('#pasteDlg').showModal(); };
+    $('#pasteClose').onclick = () => $('#pasteDlg').close();
+    $('#pasteLoad').onclick = () => {
+      try {
+        const o = JSON.parse($('#pasteText').value);
+        setCfg(Object.assign({}, o, { name: String(o.name || 'Mi agente'), system: String(o.system || ''), temperature: Number(o.temperature) || 0.4, knowledge: String(o.knowledge || '') }));
+        $('#pasteDlg').close();
+      } catch (err) { $('#pasteMsg').textContent = 'Eso no es una configuración válida: revisa que pegaste el .json completo.'; }
     };
     fill(); drawChat(); loadMine();
   }

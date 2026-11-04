@@ -48,6 +48,48 @@ function groqError(status, body, model) {
   return Object.assign(new Error(detail ? `Groq respondió: ${String(detail).slice(0, 200)}` : 'El modelo no pudo responder en este momento.'), { status: 502 });
 }
 
+/* ---------- Ollama del servidor: modelos locales que todos usan sin instalar nada ---------- */
+const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/$/, '');
+let ollamaCache = { t: 0, models: null };
+async function serverOllama() {
+  if (OLLAMA_URL === 'off') return null;
+  if (Date.now() - ollamaCache.t < 30000) return ollamaCache.models;
+  let models = null;
+  try {
+    const r = await fetch(OLLAMA_URL + '/api/tags', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) { models = ((await r.json()).models || []).map(m => m.name); if (!models.length) models = null; }
+  } catch { /* no hay Ollama en este servidor */ }
+  ollamaCache = { t: Date.now(), models };
+  return models;
+}
+
+// Traduce entre el formato del bucle (tipo OpenAI) y el de Ollama.
+function makeOllamaLlm(model) {
+  const parse = a => { try { return JSON.parse(a || '{}'); } catch { return {}; } };
+  return async ({ temperature, maxTokens, messages, tools }) => {
+    const names = new Map();
+    const body = messages.map(m => {
+      if (m.role === 'assistant' && m.tool_calls) {
+        m.tool_calls.forEach(c => names.set(c.id, c.function.name));
+        return { role: 'assistant', content: m.content || '', tool_calls: m.tool_calls.map(c => ({ function: { name: c.function.name, arguments: parse(c.function.arguments) } })) };
+      }
+      if (m.role === 'tool') return { role: 'tool', content: m.content, tool_name: names.get(m.tool_call_id) };
+      return { role: m.role, content: m.content };
+    });
+    let res;
+    try {
+      res = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', signal: AbortSignal.timeout(180000), body: JSON.stringify({ model, messages: body, tools, stream: false, options: { temperature, num_predict: maxTokens || 700 } }) });
+    } catch { throw Object.assign(new Error('El Ollama del servidor no respondió. Avísale al docente.'), { status: 502 }); }
+    if (!res.ok) {
+      const t = await res.text();
+      console.error('[Ollama]', res.status, model, t.slice(0, 200));
+      throw Object.assign(new Error(/does not support tools/i.test(t) ? 'Ese modelo no soporta herramientas. Elige otro o desactiva las herramientas.' : 'El Ollama del servidor no pudo responder.'), { status: 502 });
+    }
+    const msg = (await res.json()).message || {};
+    return { content: strip(msg.content), tool_calls: (msg.tool_calls || []).map((c, i) => ({ id: `call_${Date.now()}_${i}`, function: { name: c.function.name, arguments: JSON.stringify(c.function.arguments || {}) } })) };
+  };
+}
+
 function makeLlm(apiKey) {
   const call = body => fetch(`${GROQ_BASE}/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return async ({ model, temperature, maxTokens, messages, tools }) => {
@@ -107,7 +149,7 @@ app.use(express.json({ limit: '400kb' }));
 
 app.get('/api/info', wrap(async (req, res) => {
   res.json({
-    needsCode: !!ACCESS_CODE, adminReady, sharedKey: !!(await sharedKey()), models: MODELS,
+    needsCode: !!ACCESS_CODE, adminReady, sharedKey: !!(await sharedKey()), serverOllama: await serverOllama(), models: MODELS,
     formats: Object.fromEntries(Object.entries(FORMATS).map(([k, v]) => [k, v.label])), promptLines: PROMPT_LINES.map(([, l]) => l),
     tools: Object.entries(TOOLS).map(([id, t]) => ({ id, label: t.label, description: t.def.function.description }))
   });
@@ -225,11 +267,16 @@ app.delete('/api/agents/:name', auth, wrap(async (req, res) => {
 
 /* Agente con Groq: usa la API key de la persona (o la del servidor si existe) */
 app.post('/api/agent', auth, limiter(20, 60000, req => 'u' + req.user.id), wrap(async (req, res) => {
+  const { config, history, provider, ollamaModel } = req.body || {};
+  pool.query('UPDATE users SET last_seen = now() WHERE id = $1', [req.user.id]).catch(() => {});
+  if (provider === 'server') {
+    const models = await serverOllama();
+    if (!models) return res.status(400).json({ error: 'Este servidor no tiene modelos locales (Ollama). Elige Groq.' });
+    return res.json(await runAgent({ config, history, llm: makeOllamaLlm(models.includes(ollamaModel) ? ollamaModel : models[0]) }));
+  }
   const { rows } = await pool.query('SELECT groq_key FROM users WHERE id = $1', [req.user.id]);
   const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key)) || await sharedKey();
-  if (!key) return res.status(400).json({ error: 'Primero guarda tu API key de Groq (módulo 0, paso 2) o usa un modelo local con Ollama.' });
-  pool.query('UPDATE users SET last_seen = now() WHERE id = $1', [req.user.id]).catch(() => {});
-  const { config, history } = req.body || {};
+  if (!key) return res.status(400).json({ error: 'No hay clave de Groq: guárdala en «Mi cuenta», pide al docente la del curso o elige el modelo local del servidor.' });
   res.json(await runAgent({ config, history, llm: makeLlm(key) }));
 }));
 

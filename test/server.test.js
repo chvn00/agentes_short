@@ -23,9 +23,25 @@ const groq = http.createServer((req, res) => {
   });
 });
 
+// Ollama simulado del servidor
+const ollama = http.createServer((req, res) => {
+  let body = '';
+  req.on('data', d => { body += d; });
+  req.on('end', () => {
+    res.setHeader('content-type', 'application/json');
+    if (req.url === '/api/tags') return res.end('{"models":[{"name":"llama3.2:latest"},{"name":"qwen2.5:3b"}]}');
+    const j = JSON.parse(body), last = j.messages[j.messages.length - 1];
+    if (last.role === 'tool') return res.end(JSON.stringify({ message: { role: 'assistant', content: `Ollama (${j.model}) dice ${last.content} vía ${last.tool_name}` } }));
+    if (j.tools) return res.end(JSON.stringify({ message: { role: 'assistant', content: '', tool_calls: [{ function: { name: 'calculadora', arguments: { expresion: '6*7' } } }] } }));
+    res.end(JSON.stringify({ message: { role: 'assistant', content: 'sin herramientas' } }));
+  });
+});
+
 let base, server;
 test.before(async () => {
   await new Promise(r => groq.listen(0, r));
+  await new Promise(r => ollama.listen(0, r));
+  process.env.OLLAMA_URL = `http://127.0.0.1:${ollama.address().port}`;
   process.env.GROQ_BASE_URL = `http://127.0.0.1:${groq.address().port}`;
   const { app, ready } = require('../server');
   await ready;
@@ -33,7 +49,7 @@ test.before(async () => {
   await new Promise(r => server.on('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
-test.after(() => { server.close(); groq.close(); });
+test.after(() => { server.close(); groq.close(); ollama.close(); });
 
 async function call(method, path, body, cookie) {
   const res = await fetch(base + path, {
@@ -90,7 +106,7 @@ test('el agente habla con Groq usando la clave de cada persona', async () => {
   assert.deepStrictEqual(seenKeys, [GOOD]);
   const sin = await call('POST', '/api/agent', { config: {}, history: hist }, beto);
   assert.strictEqual(sin.status, 400);
-  assert.match(sin.data.error, /API key/);
+  assert.match(sin.data.error, /clave de Groq/);
 });
 
 test('cada persona ve solo sus agentes guardados y su progreso', async () => {
@@ -160,4 +176,19 @@ test('cada persona cambia su propia contraseña y su API key', async () => {
   const r = await call('PUT', '/api/me/groq-key', { key: second }, c);
   assert.strictEqual(r.data.keyHint, 'gsk_…ZZZZ');
   assert.strictEqual((await call('GET', '/api/me', undefined, c)).data.keyHint, 'gsk_…ZZZZ');
+});
+
+test('los modelos del servidor (Ollama) se anuncian y el agente los usa con herramientas sin API key', async () => {
+  const info = (await call('GET', '/api/info')).data;
+  assert.deepStrictEqual(info.serverOllama, ['llama3.2:latest', 'qwen2.5:3b']);
+  await call('POST', '/api/register', { username: 'sinkey', password: 'password9', code: 'clase2026' });
+  const c = (await call('POST', '/api/login', { username: 'sinkey', password: 'password9' })).cookie;
+  const hist = [{ role: 'user', content: 'cuanto es 6 por 7' }];
+  const r = await call('POST', '/api/agent', { config: { tools: ['calculadora'] }, history: hist, provider: 'server', ollamaModel: 'qwen2.5:3b' }, c);
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.data.reply, 'Ollama (qwen2.5:3b) dice 42 vía calculadora');
+  assert.deepStrictEqual(r.data.steps, [{ tool: 'calculadora', args: { expresion: '6*7' }, result: '42' }]);
+  const otro = await call('POST', '/api/agent', { config: {}, history: hist, provider: 'server', ollamaModel: 'no-existe' }, c);
+  assert.strictEqual(otro.data.reply, 'sin herramientas');
+  assert.strictEqual((await call('POST', '/api/agent', { config: {}, history: hist }, c)).status, 400);
 });

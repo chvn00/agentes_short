@@ -2,12 +2,12 @@
 window.MODULES = [
   {
     id: 'm0', min: 20, title: 'Prepara tu entorno', icon: '🧰', setup: true,
-    goal: 'Crear tu cuenta en Groq, instalar Ollama y dejar listos tus dos modelos.',
+    goal: 'Dejar listos tus modelos desde el navegador: no hace falta descargar ni instalar nada.',
     concepts: [
-      ['Groq (modelos en la nube)', 'Groq presta modelos muy rápidos con un plan gratuito. Necesitas una cuenta y una API key personal: es la llave que identifica tus consultas.'],
-      ['Ollama (modelos en tu equipo)', 'Ollama descarga el modelo a tu computador y lo corre sin internet. Es más lento que Groq, pero es tuyo y no tiene cuota.'],
-      ['Tu API key es privada', 'Nunca la compartas ni la pegues en chats. Aquí se guarda cifrada y solo la usa el servidor para tus consultas.'],
-      ['Mientras se descarga', 'El modelo de Ollama pesa unos 2 GB. Déjalo descargando y continúa con el módulo 1: no hace falta esperar.']
+      ['Modelos locales del servidor', 'El computador del docente corre modelos de Ollama y todos los usan desde esta página. No dependen de internet ni de cuentas externas, pero son más pequeños y algo más lentos.'],
+      ['Groq (modelos en la nube)', 'Groq presta modelos muy rápidos con un plan gratuito. El docente puede habilitar una clave del curso; si quieres la tuya, la creas con una cuenta en la web de Groq y la pegas aquí.'],
+      ['Tu API key es privada', 'Nunca la compartas ni la pegues en chats. Aquí se guarda cifrada y solo la usa el servidor para tus consultas. Puedes cambiarla o borrarla en «Mi cuenta».'],
+      ['Qué elegir', 'Para empezar, cualquiera sirve. Si todos usan la misma clave del curso, el límite de Groq se comparte entre el grupo: una clave propia o los modelos del servidor evitan esperas.']
     ],
     steps: [], preset: null,
     check: []
@@ -77,7 +77,7 @@ window.MODULES = [
     steps: [
       'Carga «Agente con notas» y pregúntale por el horario y por el costo de un curso.',
       'Pregunta algo que NO está en las notas. ¿Lo reconoce o lo inventa?',
-      'En la sección 5 (RAG) carga un PDF o un .md tuyo (un reglamento, un apunte), usa «Probar la búsqueda» para ver qué fragmentos encuentra y haz 3 preguntas al agente.',
+      'En la sección 5 (RAG) agrega un documento de ejemplo (o pega tu propio texto), usa «Probar la búsqueda» para ver qué fragmentos encuentra y haz 3 preguntas al agente.',
       'En la sección 3 (Memoria) elige «Sin memoria», luego «Ventana de 4» y «Completa». Dile tu nombre, charla un poco y pregunta cómo te llamas: lo atenuado en el chat es lo que ya olvidó.'
     ],
     preset: 'notas',
@@ -89,17 +89,17 @@ window.MODULES = [
     concepts: [
       ['Qué debe cumplir', 'Nombre y rol claros · al menos una herramienta o notas propias · límites escritos en el prompt · 3 pruebas que funcionen.'],
       ['Cómo se evalúa', 'Una prueba que debe funcionar, una que muestre una herramienta en la traza y una que muestre que el agente reconoce lo que no sabe.'],
-      ['Exportar', 'Descarga la configuración (.json) para volver a cargarla, y el script de Python (con LangChain o directo con Groq) para correr el mismo agente fuera de esta página.'],
+      ['Ver el código', 'Tu agente se guarda en tu cuenta y puedes ver (y copiar) su configuración .json y su script de Python, con LangChain o directo con Groq, para llevarte el mismo agente después del taller.'],
       ['Siguiente paso', 'LangChain y LangGraph para agentes con varios pasos, FastAPI para publicarlos como servicio y Railway para ponerlos en línea: es el curso completo de Agentes de IA.']
     ],
     steps: [
       'Termina tu agente en el Constructor: nombre, prompt, herramientas y notas.',
       'Ejecuta las 3 pruebas del reto y guarda una captura de cada una.',
-      'Descarga la configuración (.json) y el script de Python con LangChain.',
+      'Guarda tu agente en tu cuenta (botón Guardar) y abre «Ver / copiar .json» y «Python con LangChain» para ver tu agente como código.',
       'Presenta tu agente en 1 minuto: qué hace, qué herramienta usa y qué no sabe hacer.'
     ],
     preset: null,
-    check: ['Mi agente tiene rol, herramientas y límites', 'Pasó las 3 pruebas', 'Descargué el .json y el script de Python con LangChain']
+    check: ['Mi agente tiene rol, herramientas y límites', 'Pasó las 3 pruebas', 'Guardé mi agente en mi cuenta y vi su código con LangChain']
   }
 ];
 
@@ -137,4 +137,10 @@ window.PRESETS = {
     model: 'openai/gpt-oss-120b', temperature: 0.1, maxTokens: 500, memory: { mode: 'window', size: 6 }, rag: { enabled: true, k: 3, chunk: 600 }, tools: [],
     knowledge: 'Academia Nova: curso de Introducción a la Inteligencia Artificial.\n\nHorario: martes y jueves de 6:00 pm a 8:00 pm, en el aula 204 del edificio B. El curso dura 8 semanas e inicia el 3 de febrero.\n\nCosto: la matrícula cuesta $1.200.000 COP. Los egresados de la Academia tienen 15 % de descuento. Se puede pagar en dos cuotas: la primera al matricularse y la segunda en la semana 4.\n\nRequisitos: no se necesita experiencia en programación. Se recomienda llevar portátil con acceso a internet.\n\nCertificado: se entrega un certificado digital a quienes asistan al 80 % de las clases y presenten el proyecto final.\n\nContacto: secretaria@academianova.example, de lunes a viernes de 8:00 am a 5:00 pm.'
   }
+};
+
+window.SAMPLE_DOCS = {
+  academia: { title: 'Academia Nova · preguntas frecuentes', text: 'Horario: martes y jueves de 6:00 pm a 8:00 pm, en el aula 204 del edificio B. El curso dura 8 semanas e inicia el 3 de febrero.\n\nCosto: la matrícula cuesta $1.200.000 COP. Los egresados tienen 15 % de descuento. Se puede pagar en dos cuotas: la primera al matricularse y la segunda en la semana 4.\n\nRequisitos: no se necesita experiencia en programación. Se recomienda llevar portátil con acceso a internet.\n\nCertificado: se entrega un certificado digital a quienes asistan al 80 % de las clases y presenten el proyecto final.\n\nContacto: secretaria@academianova.example, de lunes a viernes de 8:00 am a 5:00 pm.' },
+  agentes: { title: 'Apuntes · qué es un agente de IA', text: 'Un agente de IA es un modelo de lenguaje que puede decidir qué hacer: usar herramientas, mirar el resultado y seguir hasta resolver la tarea.\n\nLas piezas de un agente son: el modelo (el cerebro), las instrucciones (su rol y personalidad), las herramientas (calculadora, APIs, búsqueda), el conocimiento y la memoria, y el bucle de razonamiento: percibir, razonar, actuar y observar.\n\nLa temperatura controla la creatividad: cerca de 0 las respuestas son precisas y repetibles; por encima de 1 son variadas pero pueden inventar datos.\n\nRAG significa generación aumentada por recuperación: el agente busca primero fragmentos relevantes en los documentos y responde con base en ellos, lo que reduce las alucinaciones.\n\nUna alucinación es una respuesta inventada que suena convincente. Se reduce con buenas instrucciones, herramientas y documentos propios.' },
+  clinica: { title: 'Clínica Sonrisa · información al paciente', text: 'Horarios de atención: lunes a viernes de 7:00 am a 6:00 pm y sábados de 8:00 am a 12:00 m.\n\nPrimera consulta: la valoración inicial cuesta $60.000 y se descuenta si el paciente inicia un tratamiento.\n\nLimpieza dental: recomendamos una cada 6 meses. Cuesta $90.000 e incluye profilaxis y aplicación de flúor.\n\nUrgencias: si hay dolor fuerte, inflamación o un diente roto, llame al 300 000 0000; se atienden urgencias dentro del horario de la clínica.\n\nPagos: se aceptan efectivo, tarjeta y transferencia. Los tratamientos largos se pueden dividir en hasta 6 cuotas sin interés.' }
 };
