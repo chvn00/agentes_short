@@ -150,3 +150,7 @@ test('el prompt le dice al modelo cuál es y desde dónde corre, para que no dig
   assert.match(local, /llama3\.2:3b, creado por Meta \(ejecutado en Ollama, en el servidor del curso\)/);
   assert.ok(!/Dato técnico/.test(prepare({}, { model: 'x' }).system));
 });
+
+test('ALLaM figura como creado por SDAIA', () => {
+  assert.match(prepare({}, { provider: 'Groq', model: 'allam-2-7b' }).system, /allam-2-7b, creado por SDAIA \(Arabia Saudita\) \(ejecutado en Groq\)/);
+});

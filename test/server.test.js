@@ -17,7 +17,7 @@ const groq = http.createServer((req, res) => {
     seenKeys.push(key);
     res.setHeader('content-type', 'application/json');
     if (!key.startsWith('gsk_good')) { res.statusCode = 401; return res.end('{}'); }
-    if (req.url.endsWith('/models')) return res.end('{"data":[{"id":"openai/gpt-oss-20b"},{"id":"whisper-large-v3"},{"id":"openai/gpt-oss-120b"},{"id":"meta-llama/llama-guard-4-12b"},{"id":"zeta/modelo-nuevo"}]}');
+    if (req.url.endsWith('/models')) return res.end('{"data":[{"id":"openai/gpt-oss-20b"},{"id":"whisper-large-v3"},{"id":"openai/gpt-oss-120b"},{"id":"meta-llama/llama-guard-4-12b"},{"id":"zeta/modelo-nuevo"},{"id":"allam-2-7b","context_window":4096},{"id":"viejo/modelo","active":false}]}');
     if (/retirado/.test(body)) { res.statusCode = 400; return res.end('{"error":{"message":"The model `retirado` has been decommissioned and is no longer supported.","code":"model_decommissioned"}}'); }
     res.end(JSON.stringify({ choices: [{ message: { content: 'hola desde groq' } }] }));
   });

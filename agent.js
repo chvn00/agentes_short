@@ -323,7 +323,7 @@ const PROMPT_LINES = [
 
 const modelLabel = (id, provider) => `${id}${makerOf(id) ? ', creado por ' + makerOf(id) : ''} (ejecutado en ${provider})`;
 // Quién creó cada familia de modelos: los modelos no lo saben con certeza y suelen decir «OpenAI».
-const MAKERS = [[/gpt-oss/i, 'OpenAI'], [/llama/i, 'Meta'], [/qwen/i, 'Alibaba'], [/mistral|mixtral/i, 'Mistral AI'], [/gemma/i, 'Google'], [/phi/i, 'Microsoft'], [/deepseek/i, 'DeepSeek'], [/granite/i, 'IBM'], [/kimi/i, 'Moonshot AI'], [/minimax/i, 'MiniMax']];
+const MAKERS = [[/gpt-oss/i, 'OpenAI'], [/llama/i, 'Meta'], [/qwen/i, 'Alibaba'], [/mistral|mixtral/i, 'Mistral AI'], [/gemma/i, 'Google'], [/phi/i, 'Microsoft'], [/deepseek/i, 'DeepSeek'], [/granite/i, 'IBM'], [/kimi/i, 'Moonshot AI'], [/allam/i, 'SDAIA (Arabia Saudita)'], [/minimax/i, 'MiniMax']];
 const makerOf = id => (MAKERS.find(([re]) => re.test(id)) || [])[1];
 
 function promptVars(cfg, runtime) {

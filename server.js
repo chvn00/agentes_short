@@ -44,6 +44,8 @@ function groqError(status, body, model) {
   if (status === 401) return Object.assign(new Error('Groq rechazó tu API key. Vuelve a guardarla en «Mi cuenta».'), { status: 400 });
   if (status === 429) return Object.assign(new Error('Llegaste al límite de tu cuenta de Groq. Espera un minuto e inténtalo de nuevo.'), { status: 429 });
   if (/decommission|no longer supported|model_not_found|does not exist|not found/i.test(detail + body)) return Object.assign(new Error(`El modelo «${model}» ya no está disponible en Groq. Elige otro en la sección 1 del Constructor.`), { status: 400 });
+  if (/does not support tool|tool.{0,30}not supported|tools? .{0,20}unsupported/i.test(detail + body)) return Object.assign(new Error(`El modelo «${model}» no admite herramientas. Elige otro (por ejemplo gpt-oss) o desactiva las herramientas, las APIs y el RAG.`), { status: 400 });
+  if (/context.{0,20}(length|window)|too many tokens|maximum context/i.test(detail + body)) return Object.assign(new Error(`El modelo «${model}» tiene un contexto muy corto para este agente. Reduce la memoria, el RAG o las instrucciones, o elige otro modelo.`), { status: 400 });
   if (/tool_use_failed|failed to call a function/i.test(detail + body)) return Object.assign(new Error('El modelo armó mal la llamada a una herramienta. Pregunta de nuevo o prueba con otro modelo.'), { status: 502 });
   return Object.assign(new Error(detail ? `Groq respondió: ${String(detail).slice(0, 200)}` : 'El modelo no pudo responder en este momento.'), { status: 502 });
 }
@@ -223,7 +225,11 @@ app.get('/api/models', auth, wrap(async (req, res) => {
   try {
     const r = await fetch(`${GROQ_BASE}/models`, { headers: { Authorization: `Bearer ${key}` } });
     if (!r.ok) throw new Error('sin lista');
-    const ids = ((await r.json()).data || []).map(m => m.id).filter(id => typeof id === 'string' && !/whisper|orpheus|guard|safeguard|tts|embed|compound|playai/i.test(id));
+    // Se descartan los modelos de audio y moderación, los inactivos y los de contexto muy corto (por ejemplo ALLaM, 4K):
+    // no caben el prompt, las herramientas y el historial de un agente.
+    const ids = ((await r.json()).data || [])
+      .filter(m => m && typeof m.id === 'string' && m.active !== false && !(m.context_window && m.context_window < 8000) && !/whisper|orpheus|guard|safeguard|tts|embed|compound|playai/i.test(m.id))
+      .map(m => m.id);
     if (!ids.length) throw new Error('lista vacía');
     const models = [...MODELS.filter(m => ids.includes(m)), ...ids.filter(id => !MODELS.includes(id)).sort()];
     modelCache.set(key, { t: Date.now(), models });
