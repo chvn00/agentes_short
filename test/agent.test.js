@@ -138,5 +138,15 @@ test('el prompt se arma con la plantilla: nombre, personalidad, estilo, formato 
   assert.ok(!/Personalidad|Estilo/.test(prepare({ name: 'Sol' }).system));
   assert.match(prepare({ format: 'json', formatCustom: 'respuesta, fuente' }).system, /JSON válido.*Claves del objeto: respuesta, fuente/);
   assert.match(prepare({ format: 'personalizado', formatCustom: 'Responde en haiku' }).system, /Responde en haiku/);
-  assert.strictEqual(PROMPT_LINES.length, 7);
+  assert.strictEqual(PROMPT_LINES.length, 8);
+  assert.ok(!/Dato técnico/.test(sys));
+});
+
+test('el prompt le dice al modelo cuál es y desde dónde corre, para que no diga que es GPT-4', () => {
+  const sys = prepare({ name: 'Luna', model: 'openai/gpt-oss-20b' }, { provider: 'Groq' }).system;
+  assert.match(sys, /modelo de lenguaje que te da vida es openai\/gpt-oss-20b, creado por OpenAI \(ejecutado en Groq\)/);
+  assert.match(sys, /no digas que eres GPT-4/);
+  const local = prepare({}, { provider: 'Ollama, en el servidor del curso', model: 'llama3.2:3b' }).system;
+  assert.match(local, /llama3\.2:3b, creado por Meta \(ejecutado en Ollama, en el servidor del curso\)/);
+  assert.ok(!/Dato técnico/.test(prepare({}, { model: 'x' }).system));
 });

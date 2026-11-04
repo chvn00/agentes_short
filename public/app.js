@@ -512,6 +512,8 @@
         <div class="aprm">Parámetros: <b>${apiParams(a.url).map(p => '{' + p + '}').join(' ') || 'ninguno'}</b></div>
         <div class="row"><button type="button" class="btn sm sec" data-act="test">Probar</button><button type="button" class="btn sm sec" data-act="del">Quitar</button></div><pre class="aptest" hidden></pre></div>`).join('');
     }
+    const runtime = () => provider === 'server' ? { provider: 'Ollama, en el servidor del curso', model: settings().serverModel || (info.serverOllama || [])[0] }
+      : provider === 'ollama' ? { provider: 'Ollama, en el equipo del estudiante', model: settings().ollamaModel } : { provider: 'Groq', model: cfg.model };
     const FORMAT_LABELS = Object.keys(info.formats || {}).length ? info.formats : { libre: 'Libre (sin formato fijo)', vinetas: 'Viñetas cortas', pasos: 'Pasos numerados', resumen: 'Resumen y detalle', json: 'JSON', personalizado: 'Personalizado' };
     f.format.innerHTML = Object.entries(FORMAT_LABELS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
     function drawFormat() {
@@ -522,7 +524,7 @@
     let prevTimer;
     function drawPrompt() {
       clearTimeout(prevTimer);
-      prevTimer = setTimeout(() => api('/api/prepare', 'POST', { config: cfg }).then(p => { if (f.promptPrev.isConnected) f.promptPrev.textContent = p.system; }).catch(() => {}), 350);
+      prevTimer = setTimeout(() => api('/api/prepare', 'POST', { config: cfg, runtime: runtime() }).then(p => { if (f.promptPrev.isConnected) f.promptPrev.textContent = p.system; }).catch(() => {}), 350);
     }
     const TEMP_TXT = t => t <= 0.2 ? ['Casi determinista', 'Ante la misma pregunta responde casi igual. Ideal para cálculos, datos exactos y para usar herramientas.']
       : t <= 0.7 ? ['Equilibrado', 'Respuestas naturales y consistentes. Es un buen punto de partida para la mayoría de agentes.']
@@ -685,7 +687,7 @@
     async function askOllama(history) {
       const model = settings().ollamaModel;
       if (!model) throw new Error('Conecta Ollama primero (módulo 0, paso 6).');
-      const prep = await api('/api/prepare', 'POST', { config: cfg });
+      const prep = await api('/api/prepare', 'POST', { config: cfg, runtime: runtime() });
       const messages = [{ role: 'system', content: prep.system }, ...history.slice(-prep.historyLimit)], steps = [];
       for (let n = 0; n < 5; n++) {
         let r;
@@ -741,11 +743,11 @@
     $('#dlJson').onclick = () => { read(); showCode('Configuración de tu agente (.json)', 'Cópiala y guárdala donde quieras; después puedes pegarla en un archivo .json y cargarla con «Cargar .json».', JSON.stringify(cfg, null, 2), slug() + '.json', 'application/json'); };
     $('#dlLc').onclick = async () => {
       read();
-      try { const p = await api('/api/prepare', 'POST', { config: cfg }); showCode('Script de Python con LangChain', 'Es tu mismo agente como código. Para ejecutarlo hace falta Python con langchain-groq: sirve para llevártelo después del taller.', langchainScript(cfg, toolList, slug() + '_langchain', p.vars), slug() + '_langchain.py', 'text/x-python'); } catch (e) { alert(e.message); }
+      try { const p = await api('/api/prepare', 'POST', { config: cfg, runtime: runtime() }); showCode('Script de Python con LangChain', 'Es tu mismo agente como código. Para ejecutarlo hace falta Python con langchain-groq: sirve para llevártelo después del taller.', langchainScript(cfg, toolList, slug() + '_langchain', p.vars), slug() + '_langchain.py', 'text/x-python'); } catch (e) { alert(e.message); }
     };
     $('#dlPy').onclick = async () => {
       read();
-      try { const p = await api('/api/prepare', 'POST', { config: cfg }); showCode('Script de Python con Groq', 'Tu mismo agente con la librería de Groq. Para ejecutarlo hace falta Python con el paquete groq.', pythonScript(cfg, toolList, slug(), p.system), slug() + '.py', 'text/x-python'); } catch (e) { alert(e.message); }
+      try { const p = await api('/api/prepare', 'POST', { config: cfg, runtime: runtime() }); showCode('Script de Python con Groq', 'Tu mismo agente con la librería de Groq. Para ejecutarlo hace falta Python con el paquete groq.', pythonScript(cfg, toolList, slug(), p.system), slug() + '.py', 'text/x-python'); } catch (e) { alert(e.message); }
     };
     $('#imp').onclick = () => { $('#pasteText').value = ''; $('#pasteMsg').textContent = ''; $('#pasteDlg').showModal(); };
     $('#pasteClose').onclick = () => $('#pasteDlg').close();

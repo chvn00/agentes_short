@@ -269,9 +269,9 @@ function toolsFor(cfg) {
 }
 
 // Ejecuta el bucle del agente: modelo → herramienta → observación → modelo…
-async function runAgent({ config, history, llm, fetchImpl = fetch, lookup }) {
+async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runtime }) {
   const cfg = sanitizeConfig(config);
-  const messages = [{ role: 'system', content: buildSystem(cfg) }, ...sanitizeHistory(history, historyLimit(cfg))];
+  const messages = [{ role: 'system', content: buildSystem(cfg, runtime) }, ...sanitizeHistory(history, historyLimit(cfg))];
   if (messages.length < 2 || messages[messages.length - 1].role !== 'user') throw Object.assign(new Error('Falta el mensaje del usuario'), { status: 400 });
   const avail = toolsFor(cfg);
   const tools = Object.values(avail).map(t => t.def);
@@ -312,6 +312,7 @@ const formatText = cfg => {
 // cada línea usa una variable y solo se incluye si la persona la llenó.
 const PROMPT_LINES = [
   ['nombre', 'Te llamas {nombre}.'],
+  ['modelo', 'Dato técnico: el modelo de lenguaje que te da vida es {modelo}. Si te preguntan qué modelo, IA o empresa está detrás de ti, responde con ese dato (nombre del modelo, quién lo creó y dónde se ejecuta) y no digas que eres GPT-4, ChatGPT ni otro modelo distinto.'],
   ['personalidad', 'Personalidad: {personalidad}'],
   ['estilo', 'Estilo y tono: {estilo}'],
   ['formato', 'Formato de las respuestas: {formato}'],
@@ -320,7 +321,12 @@ const PROMPT_LINES = [
   ['extras', '{extras}']
 ];
 
-function promptVars(cfg) {
+const modelLabel = (id, provider) => `${id}${makerOf(id) ? ', creado por ' + makerOf(id) : ''} (ejecutado en ${provider})`;
+// Quién creó cada familia de modelos: los modelos no lo saben con certeza y suelen decir «OpenAI».
+const MAKERS = [[/gpt-oss/i, 'OpenAI'], [/llama/i, 'Meta'], [/qwen/i, 'Alibaba'], [/mistral|mixtral/i, 'Mistral AI'], [/gemma/i, 'Google'], [/phi/i, 'Microsoft'], [/deepseek/i, 'DeepSeek'], [/granite/i, 'IBM'], [/kimi/i, 'Moonshot AI'], [/minimax/i, 'MiniMax']];
+const makerOf = id => (MAKERS.find(([re]) => re.test(id)) || [])[1];
+
+function promptVars(cfg, runtime) {
   const extra = [];
   if (cfg.tools.length || cfg.apis.length) extra.push('Cuando una herramienta pueda dar el dato exacto, úsala en vez de adivinar.');
   if (cfg.rag.enabled) extra.push('Para preguntas sobre las notas del usuario, consulta primero la herramienta buscar_conocimiento y responde solo con lo que encuentres.');
@@ -328,13 +334,13 @@ function promptVars(cfg) {
   const instr = cfg.system.trim();
   const any = cfg.persona.trim() || cfg.style.trim() || formatText(cfg) || cfg.rules.trim() || instr;
   return {
-    nombre: cfg.name.trim(), personalidad: cfg.persona.trim(), estilo: cfg.style.trim(), formato: formatText(cfg), reglas: cfg.rules.trim(),
+    nombre: cfg.name.trim(), modelo: runtime ? modelLabel(runtime.model || cfg.model, runtime.provider) : '', personalidad: cfg.persona.trim(), estilo: cfg.style.trim(), formato: formatText(cfg), reglas: cfg.rules.trim(),
     instrucciones: instr || (any ? '' : 'Eres un asistente útil. Responde en español, de forma clara y breve.'), extras: extra.join('\n\n')
   };
 }
 
-function buildSystem(cfg) {
-  const v = promptVars(cfg);
+function buildSystem(cfg, runtime) {
+  const v = promptVars(cfg, runtime);
   return PROMPT_LINES.filter(([k]) => v[k]).map(([k, line]) => line.replace(`{${k}}`, () => v[k])).join('\n');
 }
 
@@ -345,9 +351,11 @@ async function runTool(rawConfig, name, args, fetchImpl = fetch, lookup) {
 }
 
 // Lo que un cliente necesita para dirigir el modelo por su cuenta.
-function prepare(rawConfig) {
+function prepare(rawConfig, rawRuntime) {
   const cfg = sanitizeConfig(rawConfig);
-  return { system: buildSystem(cfg), vars: promptVars(cfg), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
+  const rt = rawRuntime && typeof rawRuntime === 'object' ? { provider: str(rawRuntime.provider, 80), model: str(rawRuntime.model, 80) } : null;
+  const runtime = rt && rt.provider ? rt : null;
+  return { system: buildSystem(cfg, runtime), vars: promptVars(cfg, runtime), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
 }
 
 module.exports = { runTool, prepare, buildSystem, promptVars, PROMPT_LINES, FORMATS, DEFAULT_MODEL, retrieve, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
