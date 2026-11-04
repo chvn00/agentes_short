@@ -59,7 +59,14 @@ async function serverOllama() {
   let models = null;
   try {
     const r = await fetch(OLLAMA_URL + '/api/tags', { signal: AbortSignal.timeout(1500) });
-    if (r.ok) { models = ((await r.json()).models || []).map(m => m.name); if (!models.length) models = null; }
+    if (r.ok) {
+      // Los más grandes primero (suelen usar mejor las herramientas) y sin repetir el mismo modelo con dos etiquetas.
+      const all = ((await r.json()).models || []).slice().sort((a, b) => (b.size || 0) - (a.size || 0));
+      const seen = new Map();
+      for (const m of all) { const k = m.digest || m.name; if (!seen.has(k) || (/:latest$/.test(seen.get(k)) && !/:latest$/.test(m.name))) seen.set(k, m.name); }
+      models = [...seen.values()];
+      if (!models.length) models = null;
+    }
   } catch { /* no hay Ollama en este servidor */ }
   ollamaCache = { t: Date.now(), models };
   return models;
@@ -76,18 +83,28 @@ function makeOllamaLlm(model) {
         return { role: 'assistant', content: m.content || '', tool_calls: m.tool_calls.map(c => ({ function: { name: c.function.name, arguments: parse(c.function.arguments) } })) };
       }
       if (m.role === 'tool') return { role: 'tool', content: m.content, tool_name: names.get(m.tool_call_id) };
-      return { role: m.role, content: m.content };
+      // Los modelos pequeños llaman peor a las herramientas cuando el prompt de sistema tiene saltos de línea
+      // (qwen2.5:7b pasó de 2 de 4 a 4 de 4): para ellos el prompt va en una sola línea.
+      return { role: m.role, content: m.role === 'system' ? String(m.content).replace(/\s*\n+\s*/g, ' ') : m.content };
     });
-    let res;
-    try {
-      res = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', signal: AbortSignal.timeout(180000), body: JSON.stringify({ model, messages: body, tools, stream: false, options: { temperature, num_predict: maxTokens || 700 } }) });
-    } catch { throw Object.assign(new Error('El Ollama del servidor no respondió. Avísale al docente.'), { status: 502 }); }
-    if (!res.ok) {
-      const t = await res.text();
-      console.error('[Ollama]', res.status, model, t.slice(0, 200));
-      throw Object.assign(new Error(/does not support tools/i.test(t) ? 'Ese modelo no soporta herramientas. Elige otro o desactiva las herramientas.' : 'El Ollama del servidor no pudo responder.'), { status: 502 });
-    }
-    const msg = (await res.json()).message || {};
+    // Ollama a veces devuelve una respuesta vacía cuando el modelo escribió una llamada a herramienta que no pudo
+    // interpretar (sobre todo en modelos pequeños). Se reintenta con otra muestra y, al final, sin herramientas.
+    const ask = async (temp, withTools) => {
+      let res;
+      try {
+        res = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', signal: AbortSignal.timeout(180000), body: JSON.stringify({ model, messages: body, tools: withTools ? tools : undefined, stream: false, options: { temperature: temp, num_predict: maxTokens || 700 } }) });
+      } catch { throw Object.assign(new Error('El Ollama del servidor no respondió. Avísale al docente.'), { status: 502 }); }
+      if (!res.ok) {
+        const t = await res.text();
+        console.error('[Ollama]', res.status, model, t.slice(0, 200));
+        throw Object.assign(new Error(/does not support tools/i.test(t) ? 'Ese modelo no soporta herramientas. Elige otro o desactiva las herramientas.' : 'El Ollama del servidor no pudo responder.'), { status: 502 });
+      }
+      return (await res.json()).message || {};
+    };
+    const empty = m => !strip(m.content) && !(m.tool_calls || []).length;
+    let msg = await ask(temperature, !!tools);
+    for (const bump of [0.3, 0.6]) { if (!empty(msg) || !tools) break; msg = await ask(Math.min(1, temperature + bump), true); }
+    if (empty(msg) && tools) msg = await ask(temperature, false);
     return { content: strip(msg.content), tool_calls: (msg.tool_calls || []).map((c, i) => ({ id: `call_${Date.now()}_${i}`, function: { name: c.function.name, arguments: JSON.stringify(c.function.arguments || {}) } })) };
   };
 }
