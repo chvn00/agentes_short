@@ -106,6 +106,21 @@ Abre `http://localhost:3000`. Sin `DATABASE_URL` usa una base en memoria (las cu
 
 **Railway:** conecta este repositorio, agrega un servicio **PostgreSQL** al proyecto y en las *Variables* del servicio web enlaza `DATABASE_URL` (referencia al Postgres) y define `APP_SECRET`, `ACCESS_CODE`, `ADMIN_USERNAME` y `ADMIN_PASSWORD`.
 
+## Taller en Railway con los modelos de tu Mac (túnel)
+
+Railway no tiene Ollama, pero puede usar el de tu Mac por un túnel. Los estudiantes entran a la dirección de Railway como siempre, y el servidor de Railway le pide las respuestas a tu Mac.
+
+```
+estudiante ──► Railway (la página) ──► túnel (Cloudflare) ──► puente-ollama.js ──► Ollama de tu Mac
+```
+
+1. **Una vez:** `brew install cloudflared`.
+2. **Cada clase:** abre Ollama en tu Mac y ejecuta `./puente.sh`. Imprime dos valores.
+3. En Railway, en las **Variables** del servicio web, pon `OLLAMA_URL` y `OLLAMA_TOKEN` con esos valores y espera el reinicio. La dirección del túnel cambia cada vez que lo reinicias, así que repite el paso 3.
+4. Deja la ventana de `puente.sh` abierta (y el Mac despierto) durante toda la clase. Si el Mac se apaga, la opción de modelos locales aparece como no disponible y los estudiantes siguen con Groq.
+
+**Seguridad:** el túnel no apunta a Ollama directamente sino a `puente-ollama.js`, que exige la contraseña (`OLLAMA_TOKEN`) y solo deja pasar `GET /api/tags` y `POST /api/chat`: nadie puede descargar, borrar ni crear modelos en tu Mac. Para una dirección fija entre clases, usa un túnel con nombre de Cloudflare (requiere una cuenta y un dominio) o el dominio estático gratuito de ngrok.
+
 ## Dar el taller desde tu propio computador (Mac)
 
 Todo corre en un solo Mac y el salón entra desde su navegador por la misma red. Los estudiantes no instalan ni descargan nada. Solo ese Mac necesita internet, y solo para Groq y las APIs; con los modelos locales del servidor el taller puede funcionar incluso sin internet.

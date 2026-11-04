@@ -4,6 +4,7 @@ const http = require('node:http');
 
 process.env.ACCESS_CODE = 'clase2026';
 process.env.APP_SECRET = 'secreto-de-prueba';
+process.env.OLLAMA_TOKEN = 'token-de-prueba-12345';
 delete process.env.DATABASE_URL;
 delete process.env.GROQ_API_KEY;
 
@@ -25,6 +26,7 @@ const groq = http.createServer((req, res) => {
 
 // Ollama simulado del servidor
 const ollama = http.createServer((req, res) => {
+  if (req.headers.authorization !== 'Bearer token-de-prueba-12345') { res.statusCode = 401; return res.end('{}'); }
   let body = '';
   req.on('data', d => { body += d; });
   req.on('end', () => {

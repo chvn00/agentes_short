@@ -52,13 +52,15 @@ function groqError(status, body, model) {
 
 /* ---------- Ollama del servidor: modelos locales que todos usan sin instalar nada ---------- */
 const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/$/, '');
+const OLLAMA_TOKEN = process.env.OLLAMA_TOKEN || '';      // si Ollama está detrás del puente (túnel) hacia tu Mac
+const ollamaHeaders = (extra = {}) => ({ ...(OLLAMA_TOKEN ? { Authorization: `Bearer ${OLLAMA_TOKEN}` } : {}), ...extra });
 let ollamaCache = { t: 0, models: null };
 async function serverOllama() {
   if (OLLAMA_URL === 'off') return null;
   if (Date.now() - ollamaCache.t < 30000) return ollamaCache.models;
   let models = null;
   try {
-    const r = await fetch(OLLAMA_URL + '/api/tags', { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(OLLAMA_URL + '/api/tags', { headers: ollamaHeaders(), signal: AbortSignal.timeout(OLLAMA_TOKEN ? 4000 : 1500) });
     if (r.ok) {
       // Los más grandes primero (suelen usar mejor las herramientas) y sin repetir el mismo modelo con dos etiquetas.
       const all = ((await r.json()).models || []).slice().sort((a, b) => (b.size || 0) - (a.size || 0));
@@ -92,7 +94,7 @@ function makeOllamaLlm(model) {
     const ask = async (temp, withTools) => {
       let res;
       try {
-        res = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', signal: AbortSignal.timeout(180000), body: JSON.stringify({ model, messages: body, tools: withTools ? tools : undefined, stream: false, options: { temperature: temp, num_predict: maxTokens || 700 } }) });
+        res = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', headers: ollamaHeaders({ 'Content-Type': 'application/json' }), signal: AbortSignal.timeout(180000), body: JSON.stringify({ model, messages: body, tools: withTools ? tools : undefined, stream: false, options: { temperature: temp, num_predict: maxTokens || 700 } }) });
       } catch { throw Object.assign(new Error('El Ollama del servidor no respondió. Avísale al docente.'), { status: 502 }); }
       if (!res.ok) {
         const t = await res.text();
