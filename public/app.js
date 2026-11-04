@@ -113,6 +113,8 @@
     if (!me) return;
     const id = (location.hash || '#inicio').slice(1);
     const known = routes().some(r => r[0] === id) ? id : 'inicio';
+    // Los modelos del servidor pueden aparecer o desaparecer (Ollama se abre o se cierra): se revisa al entrar y solo se redibuja si cambió algo.
+    if (['inicio', 'm0', 'constructor'].includes(known)) api('/api/info').then(i => { if (JSON.stringify(i.serverOllama) !== JSON.stringify(info.serverOllama) || i.sharedKey !== info.sharedKey) { info = i; route(); } }).catch(() => {});
     drawNav(known);
     view.innerHTML = '';
     if (known === 'inicio') home();
@@ -416,7 +418,7 @@
           <div class="field"><label for="preset">Empezar desde un ejemplo</label><select id="preset"><option value="">— elige —</option>${Object.entries(window.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.name)}</option>`).join('')}</select></div>
 
           <details class="sec" open><summary><span class="n">1</span>Modelo y temperatura</summary><div class="body">
-            <div class="field"><label for="prov">Dónde corre el modelo</label><select id="prov"><option value="groq">En la nube · Groq</option>${canServer ? '<option value="server">Modelos locales del servidor (sin instalar nada)</option>' : ''}${canLocal ? '<option value="ollama">En mi equipo · Ollama</option>' : ''}</select></div>
+            <div class="field"><label for="prov">Dónde corre el modelo</label><select id="prov"><option value="groq">En la nube · Groq</option>${canServer ? '<option value="server">Modelos locales del servidor (sin instalar nada)</option>' : '<option value="" disabled>Modelos locales del servidor: no disponibles en este servidor</option>'}${canLocal ? '<option value="ollama">En mi equipo · Ollama</option>' : ''}</select></div>
             <div class="field"><label for="model" id="modelLbl">Modelo</label><select id="model"></select></div>
             <div class="field"><label for="temp">Temperatura: <b id="tv"></b></label><input type="range" id="temp" min="0" max="1.5" step="0.1" style="width:100%"><div class="scale"><span>0 · preciso y repetible</span><span>1.5 · creativo y variable</span></div>
               <div class="row" style="margin-top:6px"><button type="button" class="btn sm sec" data-temp="0">Preciso · 0</button><button type="button" class="btn sm sec" data-temp="0.5">Equilibrado · 0.5</button><button type="button" class="btn sm sec" data-temp="1.2">Creativo · 1.2</button></div>
