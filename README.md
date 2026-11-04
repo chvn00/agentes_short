@@ -6,7 +6,7 @@ Página del curso **Agentes de IA** de la Facultad de Ingeniería en Inteligenci
 
 | Módulo | Tema | Minutos |
 |---|---|---|
-| 0 | Prepara tu entorno: cuenta y API key de Groq, Ollama y un modelo local | 20 |
+| 0 | Prepara tus modelos: modelos del servidor o clave de Groq, sin instalar nada | 20 |
 | 1 | Qué es un agente: chatbot vs. agente y sus 5 piezas | 10 |
 | 2 | Instrucciones y parámetros: prompt de sistema, temperatura y modelo | 20 |
 | 3 | Herramientas: llamada a funciones y lectura de la traza | 25 |
@@ -37,10 +37,15 @@ Si defines `ADMIN_USERNAME` y `ADMIN_PASSWORD`, esa cuenta se crea al arrancar y
 
 El administrador no ve las API keys de los estudiantes, solo si la tienen.
 
-## Los dos modelos
+## Los modelos: todo desde el navegador, sin instalar nada
 
-- **Groq (en la nube):** la lista de modelos se pide a Groq en vivo (`/api/models`), porque Groq retira modelos cada pocos meses; el 16/08/2026 retiró `llama-3.3-70b-versatile` y `llama-3.1-8b-instant`, y los agentes guardados con esos nombres se pasan solos a `gpt-oss`. Si un modelo desaparece, el chat lo dice con un mensaje claro. El módulo 0 guía la creación de la cuenta y la API key. Las consultas del agente usan la key de cada estudiante, así que la cuota no es del docente.
-- **Ollama (en el equipo):** el módulo 0 guía la instalación, `ollama pull llama3.2` y la autorización de esta página (`OLLAMA_ORIGINS`). Con Ollama el bucle del agente corre en el navegador del estudiante, que habla con `localhost:11434`; el servidor solo prepara las instrucciones y ejecuta las herramientas. Funciona mejor en Chrome o Edge.
+Los estudiantes no necesitan descargar ni instalar programas. Tienen tres opciones y la página elige la que esté disponible:
+
+- **Modelos locales del servidor (Ollama):** el equipo que corre el taller (por ejemplo tu Mac Mini) tiene Ollama con uno o más modelos, y todos los usan desde la página. El servidor los detecta solo (variable `OLLAMA_URL`, por defecto `http://localhost:11434`). No gastan cuota ni dependen de cuentas externas. Con muchos estudiantes a la vez las respuestas se ponen en cola, así que se nota más la lentitud.
+- **Groq con la clave del curso:** el docente guarda una clave en **Administración** y quien no tiene la suya la usa. El límite de Groq se comparte entre todo el grupo.
+- **Groq con la clave propia:** cada estudiante puede crear una cuenta en la web de Groq y pegar su clave en el módulo 0 o en **Mi cuenta**. La lista de modelos se pide a Groq en vivo (`/api/models`), porque Groq retira modelos cada pocos meses; el 16/08/2026 retiró `llama-3.3-70b-versatile` y `llama-3.1-8b-instant`, y los agentes guardados con esos nombres se pasan solos a `gpt-oss`. Si un modelo desaparece, el chat lo dice con un mensaje claro.
+
+Opcional y avanzado: quien pueda instalar programas puede conectar el Ollama de su propio equipo (módulo 0, sección plegada «Opcional y avanzado»). El bucle del agente corre entonces en su navegador.
 
 ## El Constructor de agentes
 
@@ -50,9 +55,9 @@ Es el centro de la página. Cada parte de un agente tiene su sección, con una e
 2. **Personalidad y respuestas:** nombre, personalidad, estilo y tono, estructura de las respuestas (libre, viñetas, pasos, resumen y detalle, JSON o personalizada), reglas y límites e instrucciones adicionales. Todo se escribe como texto: los campos llenan una **plantilla de prompt** (la misma idea que un `ChatPromptTemplate` de LangChain) y un recuadro muestra el prompt final que recibe el modelo.
 3. **Memoria:** sin memoria, ventana de N mensajes o completa (hasta 20). En el chat, lo que el agente ya olvidó se ve atenuado.
 4. **Herramientas y APIs:** calculadora, fecha y hora, clima actual (Open-Meteo) y hasta **3 APIs propias**: se escribe una URL https con parámetros entre llaves (`https://api.agify.io/?name={nombre}`), el agente decide cuándo llamarla y hay un botón para probarla.
-5. **Conocimiento (RAG):** interruptor de RAG, documentos pegados o cargados desde archivos **PDF, .md, .txt o .csv** (se pueden cargar varios), número de fragmentos a recuperar, tamaño de fragmento y una **prueba de búsqueda** que muestra qué fragmentos encontraría el agente.
+5. **Conocimiento (RAG):** interruptor de RAG, documentos pegados, **documentos de ejemplo** o cargados desde archivos **PDF, .md, .txt o .csv** (se pueden cargar varios), número de fragmentos a recuperar, tamaño de fragmento y una **prueba de búsqueda** que muestra qué fragmentos encontraría el agente.
 
-Conversa con el agente viendo la **traza** de cada herramienta que usa (nombre, argumentos y resultado). Trae cuatro agentes de ejemplo, guarda agentes en la cuenta y permite descargar la configuración en `.json`, volver a cargarla y descargar un **script de Python con LangChain** (`ChatPromptTemplate`, `ChatGroq`, `bind_tools`) o uno directo con la librería de Groq, ambos con la misma plantilla, temperatura, memoria, herramientas, APIs y RAG.
+Conversa con el agente viendo la **traza** de cada herramienta que usa (nombre, argumentos y resultado). Trae cuatro agentes de ejemplo, guarda agentes en la cuenta y muestra (para copiar) su configuración `.json` y un **script de Python con LangChain** (`ChatPromptTemplate`, `ChatGroq`, `bind_tools`) o uno directo con la librería de Groq (se ven y se copian en pantalla; descargar es opcional), ambos con la misma plantilla, temperatura, memoria, herramientas, APIs y RAG.
 
 ## Cómo funciona
 
@@ -103,7 +108,7 @@ Abre `http://localhost:3000`. Sin `DATABASE_URL` usa una base en memoria (las cu
 
 ## Dar el taller desde tu propio computador (Mac)
 
-Todo corre en un solo Mac y el salón entra desde su navegador por la misma red Wi-Fi. Solo necesitas internet en ese Mac para Groq y las APIs; los celulares y portátiles de los estudiantes solo necesitan llegar al Mac.
+Todo corre en un solo Mac y el salón entra desde su navegador por la misma red. Los estudiantes no instalan ni descargan nada. Solo ese Mac necesita internet, y solo para Groq y las APIs; con los modelos locales del servidor el taller puede funcionar incluso sin internet.
 
 1. **Una vez:** `npm install` y crea un archivo `.env` a partir de `.env.example` con `APP_SECRET`, `ACCESS_CODE`, `ADMIN_USERNAME` y `ADMIN_PASSWORD`.
 2. **Para que las cuentas no se pierdan** (recomendado): instala PostgreSQL y apunta `DATABASE_URL` a él.
@@ -118,13 +123,21 @@ Todo corre en un solo Mac y el salón entra desde su navegador por la misma red 
    Sin eso el taller funciona, pero las cuentas se borran si el servidor se reinicia.
 3. **Cada vez:** `./clase.sh`. Muestra la dirección para el salón (por ejemplo `http://192.168.1.17:3000`) y evita que el Mac se duerma.
 4. Si macOS pregunta si permites conexiones entrantes a `node`, acepta. El Mac y los estudiantes deben estar en la misma red, y esa red no puede aislar los dispositivos entre sí (algunas redes de universidad lo hacen).
-5. Para Ollama en el equipo de cada estudiante, el paso 5 del módulo 0 ya usa la dirección con la que entraron (`http://192.168.1.17:3000`), así que sirve igual.
+5. **Ollama en el servidor:** instala Ollama en ese Mac, descarga uno o dos modelos que usen herramientas (`ollama pull llama3.2`) y, para atender a varios estudiantes a la vez, permite peticiones en paralelo y reinicia Ollama:
 
+   ```bash
+   launchctl setenv OLLAMA_NUM_PARALLEL 4
+   ```
 
+   `./clase.sh` avisa si encuentra Ollama y qué modelos tiene.
+6. Los estudiantes solo necesitan un navegador y la dirección que muestra `clase.sh`.
+
+## Límites conocidos
 
 - No hay recuperación automática de contraseña: si alguien la olvida, el administrador le asigna una nueva desde la pestaña Administración.
 - Si cambias `APP_SECRET`, las sesiones se cierran y cada estudiante debe volver a guardar su API key.
 - La búsqueda del RAG compara palabras clave, no significado (en el curso completo se ve RAG con embeddings). Los PDF deben tener texto seleccionable: los escaneados como imagen no se leen. El texto total se limita a 60000 caracteres.
 - Las APIs propias solo admiten `https`, se bloquean las direcciones internas (localhost, redes privadas, `*.internal`) y se siguen hasta 3 redirecciones, validando cada destino. No admiten claves ni cabeceras: son para APIs públicas. Entre la comprobación del DNS y la petición hay una ventana mínima en la que un servidor malicioso podría cambiar de dirección; para un taller es un riesgo aceptado.
-- El modo Ollama depende del navegador: usa Chrome o Edge y autoriza el origen de la página en Ollama (paso 5 del módulo 0).
-- El script de Python exportado usa Groq; no genera la variante de Ollama.
+- El Ollama del propio equipo del estudiante (opcional) depende del navegador: usa Chrome o Edge y autoriza el origen de la página en Ollama.
+- Los modelos locales pequeños (3B) a veces arman mal los datos de una herramienta; el agente lo intenta de nuevo, pero un modelo grande de Groq es más fiable.
+- Los scripts de Python exportados usan Groq; no generan la variante de Ollama.
