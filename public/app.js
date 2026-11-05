@@ -135,7 +135,7 @@
       return `<a href="#${m.id}" style="text-decoration:none"><li><div class="ic">${m.icon}</div><div class="t"><b>${esc(modLabel(m))}</b><span>${esc(m.goal)}</span></div><div class="m">${moduleDone(m) ? '<div class="done">✓ listo</div>' : ''}</div></li></a>`;
     }).join('');
     view.innerHTML = `
-      <section class="hero"><span class="kick">Taller de 2 horas</span><h1>Hola, ${esc(pretty(me.username))}: vamos a crear tu agente de IA</h1>
+      <section class="hero"><h1>Hola, ${esc(pretty(me.username))}: vamos a crear tu agente de IA</h1>
         <p>Primero dejas listos tus modelos (todo desde el navegador, sin instalar nada), después aprendes las piezas de un agente y terminas con uno propio, probado y guardado en tu cuenta.</p>
         <a class="btn" href="#m0">${moduleDone(window.MODULES[0]) ? 'Ir al módulo 1' : 'Empezar: prepara tus modelos'}</a>
         <div class="dir"><span>Facultad de Ingeniería en Inteligencia Artificial · Universidad Santo Tomás, Bucaramanga</span><span>Curso dirigido por <b>Dr.-Ing. Cesar Hernando Valencia Niño</b></span></div></section>
