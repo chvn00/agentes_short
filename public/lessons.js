@@ -23,7 +23,7 @@ window.MODULES = [
     ],
     steps: [
       'Abre el Constructor con el agente «Asistente básico» (botón de abajo).',
-      'Pregúntale: «¿Qué hora es en Bucaramanga?» y «¿Cuánto es el 17 % de 2.350.000?».',
+      'Pregúntale: «¿Qué hora es en Bucaramanga?» y «¿Cuánto es 48.371 × 9.267 + 1.234²?» (el resultado correcto es 449.776.813; un modelo sin calculadora suele fallar en operaciones largas).',
       'Anota qué respondió y si puedes confiar en el resultado. Eso es lo que vamos a arreglar.'
     ],
     preset: 'basico',

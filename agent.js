@@ -315,6 +315,21 @@ function toolsFor(cfg) {
   return out;
 }
 
+// Algunos modelos (sobre todo Qwen) mezclan caracteres chinos en español. Si pasa, se pide reescribir y, si persiste, se filtran.
+const CJK = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/;
+const stripCjk = t => t.replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u3000-\u303f]+/g, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+([.,;:!?])/g, '$1').trim();
+async function cleanReply({ llm, cfg, messages, reply }) {
+  try {
+    const retry = await llm({
+      model: cfg.model, temperature: Math.min(cfg.temperature, 0.3), maxTokens: cfg.maxTokens,
+      messages: [...messages, { role: 'assistant', content: reply }, { role: 'user', content: 'Instrucción interna: reescribe tu respuesta anterior solo en español, sin ningún carácter chino ni de otro alfabeto, sin repetir y sin comentar este cambio.' }]
+    });
+    const fixed = (retry && retry.content || '').trim();
+    if (fixed && !CJK.test(fixed)) return fixed;
+  } catch { /* se filtra abajo */ }
+  return stripCjk(reply) || 'No pude generar una respuesta en español, intenta de nuevo.';
+}
+
 // Ejecuta el bucle del agente: modelo → herramienta → observación → modelo…
 async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runtime, memoryState }) {
   const cfg = sanitizeConfig(config);
@@ -343,7 +358,12 @@ async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runti
   for (let n = 0; n < MAX_STEPS; n++) {
     const msg = await llm({ model: cfg.model, temperature: cfg.temperature, maxTokens: cfg.maxTokens, messages, tools: tools.length ? tools : undefined });
     const calls = msg.tool_calls || [];
-    if (!calls.length) return { reply: msg.content || 'No pude generar una respuesta, intenta de nuevo.', steps, memoryState: memOut };
+    if (!calls.length) {
+      let reply = msg.content || 'No pude generar una respuesta, intenta de nuevo.';
+      const lastUser = messages.filter(m => m.role === 'user').pop();
+      if (CJK.test(reply) && !(lastUser && CJK.test(lastUser.content))) reply = await cleanReply({ llm, cfg, messages, reply });
+      return { reply, steps, memoryState: memOut };
+    }
     messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
     for (const call of calls) {
       const name = call.function && call.function.name;
@@ -390,7 +410,7 @@ const MAKERS = [[/gpt-oss/i, 'OpenAI'], [/llama/i, 'Meta'], [/qwen/i, 'Alibaba']
 const makerOf = id => (MAKERS.find(([re]) => re.test(id)) || [])[1];
 
 function promptVars(cfg, runtime) {
-  const extra = [];
+  const extra = ['Responde siempre en español, salvo que el usuario te escriba en otro idioma. Nunca mezcles caracteres chinos ni de otros alfabetos en la respuesta.'];
   if (cfg.tools.length || cfg.apis.length) extra.push('Cuando una herramienta pueda dar el dato exacto, úsala en vez de adivinar.');
   if (cfg.rag.enabled) extra.push('Para preguntas sobre las notas del usuario, consulta primero la herramienta buscar_conocimiento y responde solo con lo que encuentres.');
   else if (cfg.knowledge) extra.push('Notas del usuario:\n' + cfg.knowledge.slice(0, 6000));
@@ -421,4 +441,4 @@ function prepare(rawConfig, rawRuntime) {
   return { system: buildSystem(cfg, runtime), vars: promptVars(cfg, runtime), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
 }
 
-module.exports = { runTool, prepare, buildSystem, promptVars, PROMPT_LINES, FORMATS, DEFAULT_MODEL, retrieve, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
+module.exports = { stripCjk, runTool, prepare, buildSystem, promptVars, PROMPT_LINES, FORMATS, DEFAULT_MODEL, retrieve, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };

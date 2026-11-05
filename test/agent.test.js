@@ -210,3 +210,19 @@ test('memoria indefinida conserva toda la conversación; la completa solo 20', a
   await runAgent({ config: { memory: { mode: 'full', size: 6 } }, history, llm });
   assert.strictEqual(seen, 1 + 20);
 });
+
+test('si el modelo mezcla chino en la respuesta, se reescribe o se filtra', async () => {
+  const sucio = 'La humedad es del 71% y el viento está吹风中，我将继续用中文回答问题。';
+  const mk = second => { const calls = []; return { calls, llm: async req => { calls.push(req); return { content: calls.length === 1 ? sucio : second }; } }; };
+  const history = [{ role: 'user', content: '¿Qué clima hace?' }];
+  const a = mk('La humedad es del 71% y el viento es suave.');
+  assert.strictEqual((await runAgent({ config: {}, history, llm: a.llm })).reply, 'La humedad es del 71% y el viento es suave.');
+  assert.strictEqual(a.calls.length, 2);
+  const b = mk('Aún mezclo 中文');
+  const r = (await runAgent({ config: {}, history, llm: b.llm })).reply;
+  assert.ok(!/[\u4e00-\u9fff]/.test(r) && /humedad/.test(r), r);
+  // Si la persona escribe en chino, no se toca.
+  const c = mk('x');
+  assert.match((await runAgent({ config: {}, history: [{ role: 'user', content: '你好' }], llm: c.llm })).reply, /吹风/);
+  assert.strictEqual(c.calls.length, 1);
+});
