@@ -286,7 +286,7 @@
 
   /* ---------- administración ---------- */
   async function adminPage() {
-    view.innerHTML = '<div class="pagehead"><h1>👑 Administración</h1><p>Estudiantes, avance y clave de Groq del curso.</p></div><div id="admBox"><p>Cargando…</p></div>';
+    view.innerHTML = '<div class="pagehead"><h1>👑 Administración</h1><p>Estudiantes, avance por módulo, actividad y clave de Groq del curso.</p></div><div id="admBox"><p>Cargando…</p></div>';
     const box = $('#admBox');
     let users, sk;
     try { [users, sk] = await Promise.all([api('/api/admin/users'), api('/api/admin/shared-key')]); }
@@ -294,9 +294,14 @@
 
     const modKeys = window.MODULES.flatMap(m => m.check.map((_, i) => m.id + '.' + i));
     const done = u => modKeys.filter(k => u.progress && u.progress[k]).length;
+    const modDone = (u, m) => m.check.filter((_, i) => u.progress && u.progress[m.id + '.' + i]).length;
     const when = d => d ? new Date(d).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+    const ago = d => { if (!d) return 'nunca'; const m = Math.round((Date.now() - new Date(d)) / 60000); return m < 1 ? 'ahora' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} d`; };
     const students = users.filter(u => !u.isAdmin);
     const pct = students.length ? Math.round(students.reduce((n, u) => n + done(u), 0) / (students.length * modKeys.length) * 100) : 0;
+    const active = students.filter(u => u.lastSeen && Date.now() - new Date(u.lastSeen) < 15 * 60000).length;
+    const finished = students.filter(u => done(u) === modKeys.length).length;
+    const sum = f => students.reduce((n, u) => n + f(u), 0);
 
     box.innerHTML = `
       <div class="card"><h3>Clave de Groq del curso</h3>
@@ -305,15 +310,19 @@
         <div class="act sk"><input type="password" id="skIn" placeholder="gsk_…" autocomplete="off"><button class="btn sm" id="skSave" type="button">Guardar y verificar</button>${sk.hasKey ? '<button class="btn sm sec" id="skDel" type="button">Borrar</button>' : ''}</div></div>
       <div class="stats">
         <div class="card"><b>${students.length}</b><span>estudiantes</span></div>
-        <div class="card"><b>${students.filter(u => u.hasKey).length}</b><span>con API key de Groq</span></div>
-        <div class="card"><b>${students.filter(u => u.ollamaOk).length}</b><span>con Ollama conectado</span></div>
+        <div class="card"><b>${active}</b><span>activos (últimos 15 min)</span></div>
         <div class="card"><b>${pct}%</b><span>avance promedio</span></div>
+        <div class="card"><b>${finished}</b><span>terminaron todo</span></div>
+        <div class="card"><b>${sum(u => u.agents)}</b><span>agentes creados</span></div>
+        <div class="card"><b>${sum(u => u.msgs)}</b><span>mensajes enviados a agentes</span></div>
+        <div class="card"><b>${sum(u => u.toolCalls)}</b><span>usos de herramientas</span></div>
       </div>
       <div class="row" style="justify-content:space-between;align-items:center;margin:18px 0 8px"><h2 class="sec-title" style="margin:0">Estudiantes</h2><div class="row"><button class="btn sm dngBtn" id="delSel" type="button" disabled>🗑 Borrar seleccionados</button><button class="btn sm sec" id="csv" type="button">Descargar CSV</button></div></div>
-      <div class="tablewrap"><table class="adm"><thead><tr><th><input type="checkbox" id="selAll" title="Seleccionar a todos"></th><th>Usuario</th><th>Creado</th><th>Última vez</th><th>Groq</th><th>Ollama</th><th>Avance</th><th>Agentes</th><th></th></tr></thead><tbody>
-      ${users.map(u => `<tr data-id="${u.id}"><td>${u.isAdmin ? '' : '<input type="checkbox" class="selU">'}</td><td><b>${esc(pretty(u.username))}</b>${u.isAdmin ? ' <span class="pill y">admin</span>' : ''}</td><td>${when(u.createdAt)}</td><td>${when(u.lastSeen)}</td>
-        <td>${u.hasKey ? '✓' : '—'}</td><td>${u.ollamaOk ? '✓ ' + esc(u.ollamaModel || '') : '—'}</td><td>${done(u)}/${modKeys.length}</td><td>${u.agents}</td>
-        <td class="acts">${u.agents ? '<button type="button" data-a="ag">Ver agentes</button>' : ''}${u.isAdmin ? '' : '<button type="button" data-a="pw">Nueva contraseña</button><button type="button" data-a="del" class="dng">🗑 Borrar usuario</button>'}</td></tr>`).join('') || '<tr><td colspan="9">Aún no hay usuarios.</td></tr>'}
+      <div class="tablewrap"><table class="adm"><thead><tr><th><input type="checkbox" id="selAll" title="Seleccionar a todos"></th><th>Estudiante</th><th>Última actividad</th><th>Avance</th>${window.MODULES.map(m => `<th title="${esc(m.title)}">${m.id.toUpperCase()}</th>`).join('')}<th>Agentes</th><th>Mensajes</th><th>Herram.</th><th>Último modelo</th><th>Groq</th><th></th></tr></thead><tbody>
+      ${users.map(u => { const p = Math.round(done(u) / modKeys.length * 100); return `<tr data-id="${u.id}"><td>${u.isAdmin ? '' : '<input type="checkbox" class="selU">'}</td><td><b>${esc(pretty(u.username))}</b>${u.isAdmin ? ' <span class="pill y">admin</span>' : ''}<br><small style="color:var(--muted)">desde ${when(u.createdAt)}</small></td><td title="${when(u.lastSeen)}">${ago(u.lastSeen)}</td>
+        <td><b>${p}%</b> <small style="color:var(--muted)">${done(u)}/${modKeys.length}</small></td>${window.MODULES.map(m => { const d = modDone(u, m), t = m.check.length; return `<td class="${d === t ? 'good' : ''}">${d === t ? '✓' : d + '/' + t}</td>`; }).join('')}
+        <td>${u.agents}</td><td>${u.msgs}</td><td>${u.toolCalls}</td><td>${esc(u.lastModel || '—')}</td><td>${u.hasKey ? '✓' : '—'}</td>
+        <td class="acts">${u.agents ? '<button type="button" data-a="ag">Ver agentes</button>' : ''}${u.isAdmin ? '' : '<button type="button" data-a="pw">Nueva contraseña</button><button type="button" data-a="del" class="dng">🗑 Borrar usuario</button>'}</td></tr>`; }).join('') || '<tr><td colspan="16">Aún no hay usuarios.</td></tr>'}
       </tbody></table></div><div id="agView"></div>`;
 
     $('#skSave').onclick = async () => {
@@ -325,8 +334,8 @@
 
     $('#csv').onclick = () => {
       const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-      const head = ['usuario', 'creado', 'ultima_vez', 'groq', 'ollama', 'modelo_ollama', 'puntos_completados', 'puntos_totales', 'agentes'];
-      const rows = users.map(u => [u.username, u.createdAt || '', u.lastSeen || '', u.hasKey ? 'si' : 'no', u.ollamaOk ? 'si' : 'no', u.ollamaModel || '', done(u), modKeys.length, u.agents]);
+      const head = ['usuario', 'creado', 'ultima_vez', 'puntos_completados', 'puntos_totales', 'avance_pct', ...window.MODULES.map(m => m.id), 'agentes', 'mensajes', 'usos_herramientas', 'ultimo_modelo', 'groq'];
+      const rows = users.filter(u => !u.isAdmin).map(u => [u.username, u.createdAt || '', u.lastSeen || '', done(u), modKeys.length, Math.round(done(u) / modKeys.length * 100), ...window.MODULES.map(m => modDone(u, m) + '/' + m.check.length), u.agents, u.msgs, u.toolCalls, u.lastModel || '', u.hasKey ? 'si' : 'no']);
       const a = el('a', { href: URL.createObjectURL(new Blob(['﻿' + [head, ...rows].map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' })), download: 'estudiantes.csv' });
       document.body.appendChild(a); a.click(); a.remove();
     };
@@ -344,7 +353,7 @@
       try {
         if (b.dataset.a === 'ag') {
           const list = await api(`/api/admin/users/${id}/agents`);
-          $('#agView').innerHTML = `<h2 class="sec-title">Agentes de ${esc(name)}</h2>` + list.map(a => `<div class="card" style="margin-bottom:10px"><h3>${esc(a.name)}</h3><p style="white-space:pre-wrap">${esc(a.config.system || '')}</p><p style="color:var(--muted);font-size:13px;margin-top:6px">Modelo: ${esc(a.config.model || '')} · Temperatura: ${esc(a.config.temperature)} · Herramientas: ${esc((a.config.tools || []).join(', ') || 'ninguna')}</p></div>`).join('');
+          $('#agView').innerHTML = `<h2 class="sec-title">Agentes de ${esc(name)}</h2>` + list.map(a => `<div class="card" style="margin-bottom:10px"><h3>${esc(a.name)}</h3><p style="white-space:pre-wrap">${esc(a.config.system || '')}</p><p style="color:var(--muted);font-size:13px;margin-top:6px">Modelo: ${esc(a.config.model || '')} · Temperatura: ${esc(a.config.temperature)} · Herramientas: ${esc((a.config.tools || []).join(', ') || 'ninguna')} · Memoria: ${esc((a.config.memory || {}).mode || 'ventana')} · RAG: ${(a.config.rag || {}).enabled ? 'sí' : 'no'}${a.config.knowledge ? ` (${a.config.knowledge.length} caracteres de notas)` : ''} · Actualizado: ${when(a.updated_at)}</p></div>`).join('');
           $('#agView').scrollIntoView({ behavior: 'smooth' });
         } else if (b.dataset.a === 'pw') {
           const p = prompt(`Nueva contraseña para ${name} (mínimo 8 caracteres):`);

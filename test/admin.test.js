@@ -70,7 +70,8 @@ test('el administrador ve a todos con su estado, pero nunca las API keys', async
   const list = (await call('GET', '/api/admin/users', undefined, adm)).data;
   const u = list.find(x => x.username === 'luis');
   assert.strictEqual(u.hasKey, true);
-  assert.strictEqual(u.ollamaOk, true);
+  assert.strictEqual(u.msgs, 0);
+  assert.ok('toolCalls' in u && 'lastModel' in u);
   assert.strictEqual(u.agents, 1);
   assert.deepStrictEqual(u.progress, { 'm1.0': true, 'm1.1': true });
   assert.ok(!JSON.stringify(list).includes(GOOD));

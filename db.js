@@ -25,6 +25,9 @@ async function init(pool) {
   )`);
   // Columna agregada después: en bases ya creadas hay que añadirla.
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ').catch(() => {});
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS msgs INTEGER NOT NULL DEFAULT 0').catch(() => {});
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS tool_calls INTEGER NOT NULL DEFAULT 0').catch(() => {});
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_model TEXT').catch(() => {});
   await pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

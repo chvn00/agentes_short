@@ -293,6 +293,13 @@ app.delete('/api/agents/:name', auth, wrap(async (req, res) => {
 }));
 
 /* Agente con Groq: usa la API key de la persona (o la del servidor si existe) */
+/* Cuenta lo que cada estudiante usa el agente (mensajes, herramientas y último modelo) para la consola del docente */
+async function tracked(req, model, promise) {
+  const out = await promise;
+  const tools = Array.isArray(out && out.steps) ? out.steps.length : 0;
+  pool.query('UPDATE users SET msgs = msgs + 1, tool_calls = tool_calls + $1, last_model = $2 WHERE id = $3', [tools, String(model || '').slice(0, 80), req.user.id]).catch(() => {});
+  return out;
+}
 app.post('/api/agent', auth, limiter(20, 60000, req => 'u' + req.user.id), wrap(async (req, res) => {
   const { config, history, provider, ollamaModel, memoryState } = req.body || {};
   pool.query('UPDATE users SET last_seen = now() WHERE id = $1', [req.user.id]).catch(() => {});
@@ -300,12 +307,12 @@ app.post('/api/agent', auth, limiter(20, 60000, req => 'u' + req.user.id), wrap(
     const models = await serverOllama();
     if (!models) return res.status(400).json({ error: 'Este servidor no tiene modelos locales (Ollama). Elige Groq.' });
     const model = models.includes(ollamaModel) ? ollamaModel : models[0];
-    return res.json(await runAgent({ config, history, llm: makeOllamaLlm(model), memoryState, runtime: { provider: 'Ollama, en el servidor del curso', model } }));
+    return res.json(await tracked(req, model, runAgent({ config, history, llm: makeOllamaLlm(model), memoryState, runtime: { provider: 'Ollama, en el servidor del curso', model } })));
   }
   const { rows } = await pool.query('SELECT groq_key FROM users WHERE id = $1', [req.user.id]);
   const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key)) || await sharedKey();
   if (!key) return res.status(400).json({ error: 'No hay clave de Groq: guárdala en «Mi cuenta», pide al docente la del curso o elige el modelo local del servidor.' });
-  res.json(await runAgent({ config, history, llm: makeLlm(key), memoryState, runtime: { provider: 'Groq' } }));
+  res.json(await tracked(req, config && config.model, runAgent({ config, history, llm: makeLlm(key), memoryState, runtime: { provider: 'Groq' } })));
 }));
 
 /* Para el modo Ollama, el bucle corre en el navegador: estos dos puntos le dan lo que necesita */
@@ -321,13 +328,13 @@ const admin = express.Router();
 admin.use(auth, requireAdmin);
 
 admin.get('/users', wrap(async (req, res) => {
-  const { rows: users } = await pool.query('SELECT id, username, groq_key, progress, settings, created_at, last_seen FROM users ORDER BY created_at DESC');
+  const { rows: users } = await pool.query('SELECT id, username, groq_key, progress, created_at, last_seen, msgs, tool_calls, last_model FROM users ORDER BY created_at DESC');
   const { rows: counts } = await pool.query('SELECT user_id, COUNT(*)::int AS n FROM agents GROUP BY user_id');
   const n = new Map(counts.map(c => [c.user_id, c.n]));
   res.json(users.map(u => ({
     id: u.id, username: u.username, isAdmin: u.username === ADMIN_USERNAME, hasKey: !!(u.groq_key && decrypt(u.groq_key)),
-    progress: u.progress, ollamaOk: !!(u.settings && u.settings.ollamaOk), ollamaModel: (u.settings && u.settings.ollamaModel) || null,
-    agents: n.get(u.id) || 0, createdAt: u.created_at, lastSeen: u.last_seen
+    progress: u.progress, agents: n.get(u.id) || 0, createdAt: u.created_at, lastSeen: u.last_seen,
+    msgs: u.msgs || 0, toolCalls: u.tool_calls || 0, lastModel: u.last_model || null
   })));
 }));
 
