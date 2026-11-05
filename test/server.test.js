@@ -65,7 +65,11 @@ const GOOD = 'gsk_good' + 'A'.repeat(24);
 
 test('el registro exige el código de clase, un usuario válido y contraseña de 8+', async () => {
   assert.strictEqual((await call('POST', '/api/register', { username: 'ana', password: 'password1', code: 'mal' })).status, 403);
-  assert.strictEqual((await call('POST', '/api/register', { username: 'A b', password: 'password1', code: 'clase2026' })).status, 400);
+  assert.strictEqual((await call('POST', '/api/register', { username: 'A@b!1', password: 'password1', code: 'clase2026' })).status, 400);
+  const full = await call('POST', '/api/register', { username: '  María   PÉREZ ', password: 'password1', code: 'clase2026' });
+  assert.strictEqual(full.status, 200);
+  assert.strictEqual(full.data.username, 'maría pérez');
+  assert.strictEqual((await call('POST', '/api/login', { username: 'MARÍA pérez', password: 'password1' })).status, 200);
   assert.strictEqual((await call('POST', '/api/register', { username: 'ana', password: 'corta', code: 'clase2026' })).status, 400);
 });
 

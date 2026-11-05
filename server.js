@@ -159,7 +159,9 @@ function auth(req, res, next) {
 
 const isAdmin = req => !!ADMIN_USERNAME && req.user.username === ADMIN_USERNAME;
 function requireAdmin(req, res, next) { return isAdmin(req) ? next() : res.status(403).json({ error: 'Solo para el administrador' }); }
-const USERNAME = /^[a-z0-9_.-]{3,30}$/;
+// El "usuario" es el nombre y apellido: con mayúsculas o minúsculas, tildes y espacios; se guarda normalizado.
+const USERNAME = /^[\p{L}\p{M}][\p{L}\p{M}' .-]{2,59}$/u;
+const normName = s => String(s || '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
 const hint = key => 'gsk_…' + key.slice(-4);
 const clip = (o, max) => (o && typeof o === 'object' && !Array.isArray(o) && JSON.stringify(o).length <= max) ? o : null;
 
@@ -178,13 +180,13 @@ app.get('/api/info', wrap(async (req, res) => {
 
 // El salón entero puede salir por una sola IP: el registro admite más tráfico y el login se limita por cuenta.
 const registerLimit = limiter(60);
-const loginLimit = limiter(10, 60000, req => req.ip + '|' + String((req.body || {}).username || '').toLowerCase());
+const loginLimit = limiter(10, 60000, req => req.ip + '|' + normName((req.body || {}).username));
 app.post('/api/register', registerLimit, wrap(async (req, res) => {
   const { password, code } = req.body || {};
-  const username = String((req.body || {}).username || '').trim().toLowerCase();
+  const username = normName((req.body || {}).username);
   if (ACCESS_CODE && !safeEqual(code || '', ACCESS_CODE)) return res.status(403).json({ error: 'El código de clase no es correcto.' });
   if (username === ADMIN_USERNAME) return res.status(409).json({ error: 'Ese usuario ya existe. Elige otro.' });
-  if (!USERNAME.test(username)) return res.status(400).json({ error: 'El usuario debe tener de 3 a 30 caracteres: letras minúsculas, números, punto, guion o guion bajo.' });
+  if (!USERNAME.test(username)) return res.status(400).json({ error: 'Escribe tu nombre y apellido (solo letras).' });
   if (typeof password !== 'string' || password.length < 8 || password.length > 100) return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres.' });
   if ((await pool.query('SELECT 1 FROM users WHERE username = $1', [username])).rows.length) return res.status(409).json({ error: 'Ese usuario ya existe. Elige otro.' });
   const hash = await bcrypt.hash(password, 10);
@@ -194,7 +196,7 @@ app.post('/api/register', registerLimit, wrap(async (req, res) => {
 }));
 
 app.post('/api/login', loginLimit, wrap(async (req, res) => {
-  const username = String((req.body || {}).username || '').trim().toLowerCase();
+  const username = normName((req.body || {}).username);
   const password = String((req.body || {}).password || '');
   const { rows } = await pool.query('SELECT id, username, password_hash FROM users WHERE username = $1', [username]);
   const ok = rows[0] && await bcrypt.compare(password, rows[0].password_hash);

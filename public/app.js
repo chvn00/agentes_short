@@ -1,6 +1,7 @@
 (function () {
   const $ = (s, r = document) => r.querySelector(s);
   const view = $('#view'), nav = $('#nav');
+  const pretty = s => String(s).replace(/(^|[\s'-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()); // "ana pérez" → "Ana Pérez"
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const el = (tag, attrs = {}, html = '') => { const e = document.createElement(tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); e.innerHTML = html; return e; };
 
@@ -46,14 +47,13 @@
     let mode = 'login';
     const draw = (err) => {
       view.innerHTML = `<section class="card auth"><img class="logoA" src="logo-usta.png" alt="Universidad Santo Tomás, Bucaramanga"><h1 style="font-size:24px">Taller de Agentes de IA</h1><p class="who2">Facultad de Ingeniería en Inteligencia Artificial<br>Dirige: <b>Dr.-Ing. Cesar Hernando Valencia Niño</b></p>
-        <p style="color:var(--muted);margin-top:0">${mode === 'login' ? 'Entra con tu usuario para continuar donde lo dejaste.' : 'Crea tu usuario: tu avance, tu API key y tus agentes quedan guardados en tu cuenta.'}</p>
+        <p style="color:var(--muted);margin-top:0">${mode === 'login' ? 'Entra con tu nombre y apellido para continuar donde lo dejaste.' : 'Crea tu cuenta con tu nombre y apellido: tu avance, tu API key y tus agentes quedan guardados en tu cuenta.'}</p>
         <div class="tabs"><button type="button" data-m="login" class="${mode === 'login' ? 'on' : ''}">Ingresar</button><button type="button" data-m="register" class="${mode === 'register' ? 'on' : ''}">Crear cuenta</button></div>
         ${err || msg ? `<p class="err">${esc(err || msg)}</p>` : ''}
         <form id="af" autocomplete="on">
-          <div class="field"><label for="au">Usuario</label><input type="text" id="au" autocomplete="username" autocapitalize="none" required minlength="3" maxlength="30"></div>
-          <div class="field"><label for="ap">Contraseña</label><input type="password" id="ap" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" required minlength="${mode === 'login' ? 1 : 8}">${mode === 'register' ? '<p class="hint">Mínimo 8 caracteres. Usa una que no uses en otros sitios.</p>' : ''}</div>
+          <div class="field"><label for="au">Nombre y apellido</label><input type="text" id="au" autocomplete="name" placeholder="Ej.: Ana Pérez" required minlength="3" maxlength="60">${mode === 'register' ? '<p class="hint">Con mayúsculas o minúsculas, como prefieras.</p>' : ''}</div>
+          <div class="field"><label for="ap">Contraseña</label><input type="password" id="ap" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" required minlength="${mode === 'login' ? 1 : 8}">${mode === 'register' ? '<p class="hint">Mínimo 8 caracteres.</p>' : ''}</div>
           ${mode === 'register' && info.needsCode ? '<div class="field"><label for="ac">Código de clase</label><input type="text" id="ac" autocomplete="off" required><p class="hint">Te lo da el docente.</p></div>' : ''}
-          ${mode === 'register' ? '<p class="hint" style="margin:0 0 10px">Usuario: letras minúsculas, números, punto, guion o guion bajo (3 a 30).</p>' : ''}
           <button class="btn" id="asub" type="submit" style="width:100%">${mode === 'login' ? 'Entrar' : 'Crear mi cuenta'}</button>
         </form></section>`;
       view.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { mode = b.dataset.m; msg = ''; draw(); });
@@ -74,7 +74,7 @@
   async function start() {
     me = await api('/api/me');
     document.body.classList.remove('guest');
-    $('#who').hidden = false; $('#whoName').textContent = '👤 ' + me.username;
+    $('#who').hidden = false; $('#whoName').textContent = '👤 ' + pretty(me.username);
     if (!location.hash || location.hash === '#') location.hash = '#inicio';
     route();
   }
@@ -137,13 +137,13 @@
       return `<a href="#${m.id}" style="text-decoration:none"><li><div class="ic">${m.icon}</div><div class="t"><b>${esc(modLabel(m))}</b><span>${esc(m.goal)}</span></div><div class="m">${m.min} min<small>desde ${t}</small>${moduleDone(m) ? '<div class="done">✓ listo</div>' : ''}</div></li></a>`;
     }).join('');
     view.innerHTML = `
-      <section class="hero"><span class="kick">Taller de 2 horas</span><h1>Hola, ${esc(me.username)}: vamos a crear tu agente de IA</h1>
+      <section class="hero"><span class="kick">Taller de 2 horas</span><h1>Hola, ${esc(pretty(me.username))}: vamos a crear tu agente de IA</h1>
         <p>Primero dejas listos tus modelos (todo desde el navegador, sin instalar nada), después aprendes las piezas de un agente y terminas con uno propio, probado y guardado en tu cuenta.</p>
         <a class="btn" href="#m0">${moduleDone(window.MODULES[0]) ? 'Ir al módulo 1' : 'Empezar: prepara tus modelos'}</a>
         <div class="dir"><span>Facultad de Ingeniería en Inteligencia Artificial · Universidad Santo Tomás, Bucaramanga</span><span>Curso dirigido por <b>Dr.-Ing. Cesar Hernando Valencia Niño</b></span></div></section>
       ${me.isAdmin ? '<div class="card adminCard"><div><h3>👑 Consola del docente</h3><p id="admSum">Estudiantes, avance, agentes y clave de Groq del curso.</p></div><a class="btn" href="#admin">Abrir consola</a></div>' : ''}
       <div class="status"><h3 style="margin:0">Tu entorno</h3>
-        <div class="row2"><span>Cuenta en el taller</span><span class="pill y">✓ ${esc(me.username)}</span></div>
+        <div class="row2"><span>Cuenta en el taller</span><span class="pill y">✓ ${esc(pretty(me.username))}</span></div>
         <div class="row2"><span>Groq con tu propia clave</span><span class="pill ${me.hasKey ? 'y' : 'n'}">${me.hasKey ? '✓ API key ' + esc(me.keyHint) : 'Sin clave propia'}</span></div>
         <div class="row2"><span>Groq con la clave del curso</span><span class="pill ${info.sharedKey ? 'y' : 'n'}">${info.sharedKey ? '✓ Habilitada por el docente' : 'No habilitada'}</span></div>
         <div class="row2"><span>Modelos locales del servidor (sin instalar nada)</span><span class="pill ${info.serverOllama ? 'y' : 'n'}">${info.serverOllama ? '✓ ' + info.serverOllama.map(esc).join(', ') : 'No disponibles'}</span></div>
@@ -265,7 +265,7 @@
           <div class="field"><label for="pwOld">Contraseña actual</label><input type="password" id="pwOld" autocomplete="current-password"></div>
           <div class="field"><label for="pwNew">Contraseña nueva (mínimo 8 caracteres)</label><input type="password" id="pwNew" autocomplete="new-password"></div>
           <button class="btn sm" id="pwSave" type="button">Cambiar contraseña</button><p class="msg2" id="pwMsg"></p>`}</div>
-        <div class="card"><h3>Mi sesión</h3><p>Usuario: <b>${esc(me.username)}</b>${me.isAdmin ? ' · administrador' : ''}</p>
+        <div class="card"><h3>Mi sesión</h3><p>Nombre: <b>${esc(pretty(me.username))}</b>${me.isAdmin ? ' · administrador' : ''}</p>
           <p style="margin-top:6px">Ollama: ${settings().ollamaOk ? `<span class="good">✓ ${esc(settings().ollamaModel || 'conectado')}</span>` : '<span class="bad">sin conectar</span>'} · <a href="#m0">configurar en el módulo 0</a></p></div>
       </div>`;
     $('#acKeySave').onclick = async () => {
@@ -309,7 +309,7 @@
       </div>
       <div class="row" style="justify-content:space-between;align-items:center;margin:18px 0 8px"><h2 class="sec-title" style="margin:0">Estudiantes</h2><div class="row"><button class="btn sm dngBtn" id="delSel" type="button" disabled>🗑 Borrar seleccionados</button><button class="btn sm sec" id="csv" type="button">Descargar CSV</button></div></div>
       <div class="tablewrap"><table class="adm"><thead><tr><th><input type="checkbox" id="selAll" title="Seleccionar a todos"></th><th>Usuario</th><th>Creado</th><th>Última vez</th><th>Groq</th><th>Ollama</th><th>Avance</th><th>Agentes</th><th></th></tr></thead><tbody>
-      ${users.map(u => `<tr data-id="${u.id}"><td>${u.isAdmin ? '' : '<input type="checkbox" class="selU">'}</td><td><b>${esc(u.username)}</b>${u.isAdmin ? ' <span class="pill y">admin</span>' : ''}</td><td>${when(u.createdAt)}</td><td>${when(u.lastSeen)}</td>
+      ${users.map(u => `<tr data-id="${u.id}"><td>${u.isAdmin ? '' : '<input type="checkbox" class="selU">'}</td><td><b>${esc(pretty(u.username))}</b>${u.isAdmin ? ' <span class="pill y">admin</span>' : ''}</td><td>${when(u.createdAt)}</td><td>${when(u.lastSeen)}</td>
         <td>${u.hasKey ? '✓' : '—'}</td><td>${u.ollamaOk ? '✓ ' + esc(u.ollamaModel || '') : '—'}</td><td>${done(u)}/${modKeys.length}</td><td>${u.agents}</td>
         <td class="acts">${u.agents ? '<button type="button" data-a="ag">Ver agentes</button>' : ''}${u.isAdmin ? '' : '<button type="button" data-a="pw">Nueva contraseña</button><button type="button" data-a="del" class="dng">🗑 Borrar usuario</button>'}</td></tr>`).join('') || '<tr><td colspan="9">Aún no hay usuarios.</td></tr>'}
       </tbody></table></div><div id="agView"></div>`;
