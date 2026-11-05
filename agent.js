@@ -152,14 +152,23 @@ const TOOLS = {
   fecha_hora: {
     label: 'Fecha y hora',
     def: fn('fecha_hora', 'Devuelve la fecha y la hora actuales en la zona horaria indicada (por defecto Bogotá).', { zona: { type: 'string', description: 'Zona IANA, por ejemplo America/Bogota o Europe/Madrid' } }, []),
-    run: async ({ zona }) => {
+    run: async ({ zona }, ctx) => {
       const asked = String(zona || '').trim();
-      const { tz, ok } = resolveZone(asked);
+      let { tz, ok } = resolveZone(asked);
+      let place = '';
+      if (!ok) { // ciudad o lugar que no está en la lista: el geocodificador devuelve su zona horaria
+        try {
+          const f = (ctx && ctx.fetch) || fetch;
+          const g = await (await f(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(asked)}&count=1&language=es`)).json();
+          const p = g.results && g.results[0];
+          if (p && p.timezone) { tz = p.timezone; ok = true; place = [p.name, p.country].filter(Boolean).join(', '); }
+        } catch { /* sin red: queda el aviso de abajo */ }
+      }
       const now = new Date();
       const text = now.toLocaleString('es-CO', { timeZone: tz, dateStyle: 'full', timeStyle: 'short' });
       const iso = now.toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T');
-      const note = !ok ? ` No reconocí la zona «${asked}»; use la de Bogotá. Si necesitas otra, pide el nombre IANA, por ejemplo Europe/Madrid.` : '';
-      return `${text} (${tz}). ISO: ${iso}.${note}`;
+      const note = !ok ? ` No pude ubicar «${asked}»; use la hora de Bogotá. Si necesitas otra, pide la ciudad o la zona IANA, por ejemplo Europe/Madrid.` : '';
+      return `${place ? place + ': ' : ''}${text} (${tz}). ISO: ${iso}.${note}`;
     }
   },
   clima: {

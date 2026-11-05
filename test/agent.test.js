@@ -155,11 +155,14 @@ test('ALLaM figura como creado por SDAIA', () => {
   assert.match(prepare({}, { provider: 'Groq', model: 'allam-2-7b' }).system, /allam-2-7b, creado por SDAIA \(Arabia Saudita\) \(ejecutado en Groq\)/);
 });
 
-test('fecha_hora acepta nombres de país o ciudad y avisa si no reconoce la zona', async () => {
+test('fecha_hora acepta países, ciudades y lugares nuevos vía geocodificador', async () => {
   const { TOOLS } = require('../agent');
-  assert.match(await TOOLS.fecha_hora.run({}), /America\/Bogota/);
-  assert.match(await TOOLS.fecha_hora.run({ zona: 'España' }), /Europe\/Madrid/);
-  assert.match(await TOOLS.fecha_hora.run({ zona: 'Bucaramanga' }), /America\/Bogota/);
-  assert.doesNotMatch(await TOOLS.fecha_hora.run({ zona: 'Bucaramanga' }), /No reconocí/);
-  assert.match(await TOOLS.fecha_hora.run({ zona: 'Narnia' }), /No reconocí la zona/);
+  const fake = async url => ({ json: async () => /Villavicencio/.test(decodeURIComponent(url)) ? { results: [{ name: 'Villavicencio', country: 'Colombia', timezone: 'America/Bogota' }] } : {} });
+  assert.match(await TOOLS.fecha_hora.run({}, { fetch: fake }), /America\/Bogota/);
+  assert.match(await TOOLS.fecha_hora.run({ zona: 'España' }, { fetch: fake }), /Europe\/Madrid/);
+  const v = await TOOLS.fecha_hora.run({ zona: 'Villavicencio' }, { fetch: fake });
+  assert.match(v, /Villavicencio, Colombia/);
+  assert.doesNotMatch(v, /No pude ubicar/);
+  assert.match(await TOOLS.fecha_hora.run({ zona: 'Lugarinexistente' }, { fetch: fake }), /No pude ubicar/);
+  assert.match(await TOOLS.fecha_hora.run({ zona: 'Lugarinexistente' }, { fetch: async () => { throw new Error('sin red'); } }), /No pude ubicar/);
 });
