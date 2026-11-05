@@ -255,3 +255,8 @@ dialog.codeDlg textarea{width:100%;height:min(52vh,420px);font:12.5px/1.45 ui-mo
 .vis .art .va.flow.bad{stroke:#e0546b}
 @keyframes vflow{to{stroke-dashoffset:-22}}
 @media(prefers-reduced-motion:reduce){.vis .art .va.flow{animation:none}.vis{transition:none}}
+
+.msg.sumd,.trace.sumd{opacity:.75;border-left:3px dashed var(--teal)}
+details.memSummary{margin:2px 0 6px;background:#eefaf8;border:1px solid #bfe6e1;border-radius:10px;padding:6px 12px;font-size:13.5px}
+details.memSummary summary{cursor:pointer;color:#16766d;font-weight:700}
+details.memSummary p{margin:6px 0 2px;white-space:pre-wrap;color:#26324d}

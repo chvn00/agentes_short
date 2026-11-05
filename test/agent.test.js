@@ -166,3 +166,47 @@ test('fecha_hora acepta países, ciudades y lugares nuevos vía geocodificador',
   assert.match(await TOOLS.fecha_hora.run({ zona: 'Lugarinexistente' }, { fetch: fake }), /No pude ubicar/);
   assert.match(await TOOLS.fecha_hora.run({ zona: 'Lugarinexistente' }, { fetch: async () => { throw new Error('sin red'); } }), /No pude ubicar/);
 });
+
+test('memoria de resumen: lo reciente va completo y lo anterior se resume una sola vez', async () => {
+  const calls = [];
+  const llm = async req => {
+    calls.push(req);
+    return /memoria de una conversación/.test(req.messages[0].content) ? { content: 'Resumen: el usuario se llama Ana.' } : { content: 'respuesta' };
+  };
+  const history = [];
+  for (let i = 0; i < 5; i++) history.push({ role: 'user', content: 'u' + i }, { role: 'assistant', content: 'a' + i });
+  history.push({ role: 'user', content: 'pregunta final' });
+  const config = { memory: { mode: 'summary', size: 4 } };
+  const r1 = await runAgent({ config, history, llm });
+  assert.strictEqual(r1.reply, 'respuesta');
+  assert.strictEqual(calls.length, 2);
+  const main = calls[1].messages;
+  assert.strictEqual(main.length, 1 + 4);
+  assert.match(main[0].content, /Resumen de la conversación anterior[\s\S]*Ana/);
+  assert.strictEqual(main[main.length - 1].content, 'pregunta final');
+  assert.deepStrictEqual(r1.memoryState, { summary: 'Resumen: el usuario se llama Ana.', upto: 7 });
+  // Con el estado devuelto no se vuelve a resumir lo mismo.
+  calls.length = 0;
+  await runAgent({ config, history, llm, memoryState: r1.memoryState });
+  assert.strictEqual(calls.length, 1);
+});
+
+test('memoria de resumen: si falla el resumen, el agente responde igual', async () => {
+  const llm = async req => { if (/memoria de una conversación/.test(req.messages[0].content)) throw new Error('límite'); return { content: 'ok' }; };
+  const history = [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }, { role: 'user', content: 'c' }, { role: 'assistant', content: 'd' }, { role: 'user', content: 'e' }];
+  const r = await runAgent({ config: { memory: { mode: 'summary', size: 2 } }, history, llm });
+  assert.strictEqual(r.reply, 'ok');
+  assert.strictEqual(r.memoryState.upto, 0);
+});
+
+test('memoria indefinida conserva toda la conversación; la completa solo 20', async () => {
+  let seen = 0;
+  const llm = async req => { seen = req.messages.length; return { content: 'ok' }; };
+  const history = [];
+  for (let i = 0; i < 30; i++) history.push({ role: 'user', content: 'u' + i }, { role: 'assistant', content: 'a' + i });
+  history.push({ role: 'user', content: 'fin' });
+  await runAgent({ config: { memory: { mode: 'unlimited', size: 6 } }, history, llm });
+  assert.strictEqual(seen, 1 + 61);
+  await runAgent({ config: { memory: { mode: 'full', size: 6 } }, history, llm });
+  assert.strictEqual(seen, 1 + 20);
+});

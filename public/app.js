@@ -174,7 +174,7 @@
       v.onclick = toggle; v.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } };
     });
     if (m.setup) return setup();
-    $('#open').onclick = () => { if (m.preset) { store.set('cfg', window.PRESETS[m.preset]); store.set('chat', []); } };
+    $('#open').onclick = () => { if (m.preset) { store.set('cfg', window.PRESETS[m.preset]); store.set('chat', []); store.set('memstate', { summary: '', upto: 0 }); } };
     view.querySelectorAll('.checks input').forEach(c => c.onchange = () => { setCheck(c.dataset.k, c.checked); drawNav(m.id); });
   }
 
@@ -405,6 +405,9 @@
     cfg.maxTokens = cfg.maxTokens || 700;
     cfg.tools = (cfg.tools || []).filter(t => t !== 'buscar_conocimiento');
     let chat = store.get('chat', []);
+    let memState = Object.assign({ summary: '', upto: 0 }, store.get('memstate', {})); // memoria de resumen: texto y cuántos mensajes ya resumió
+    const resetMem = () => { memState = { summary: '', upto: 0 }; store.set('memstate', memState); };
+    const saveChat = () => { const d = Math.max(0, chat.length - 100); store.set('chat', chat.slice(-100)); store.set('memstate', { summary: memState.summary, upto: Math.max(0, memState.upto - d) }); };
     const canGroq = me.hasKey || info.sharedKey, canServer = !!info.serverOllama, canLocal = !!settings().ollamaOk;
     let provider = settings().provider;
     if (!(provider === 'groq' || (provider === 'server' && canServer) || (provider === 'ollama' && canLocal))) provider = canGroq || !canServer ? 'groq' : 'server';
@@ -444,8 +447,8 @@
           </div></div>
 
           <div class="pane" id="pane3" role="tabpanel" data-pane="3" hidden><div class="body">
-            <div class="field"><label for="memMode">Qué recuerda de la conversación</label><select id="memMode"><option value="none">Sin memoria: solo ve tu último mensaje</option><option value="window">Ventana: los últimos mensajes</option><option value="full">Completa: hasta 20 mensajes</option></select></div>
-            <div class="field" id="memSizeBox"><label for="memSize">Mensajes que recuerda: <b id="msv"></b></label><input type="range" id="memSize" min="2" max="20" step="2" style="width:100%"></div>
+            <div class="field"><label for="memMode">Qué recuerda de la conversación</label><select id="memMode"><option value="none">Sin memoria: solo ve tu último mensaje</option><option value="window">Ventana: los últimos mensajes</option><option value="summary">Resumen: lo reciente completo + un resumen de lo anterior</option><option value="full">Completa: hasta 20 mensajes</option><option value="unlimited">Indefinida: toda la conversación, sin límite</option></select></div>
+            <div class="field" id="memSizeBox"><label for="memSize" id="memSizeLbl">Mensajes que recuerda: <b id="msv"></b></label><input type="range" id="memSize" min="2" max="20" step="2" style="width:100%"></div>
             <div class="explain" id="memExp"></div>
             <small>Prueba: dile tu nombre y, tres mensajes después, pregunta «¿cómo me llamo?». En el chat, lo que el agente ya olvidó aparece atenuado.</small>
           </div></div>
@@ -471,6 +474,7 @@
         </section>
         <section class="panel chat"><div class="row" style="justify-content:space-between;align-items:center"><h2 id="title" style="margin:0"></h2><button class="btn sm sec" id="clear" type="button">Nueva conversación</button></div>
           <div class="sumry" id="sumry"></div>
+          <details class="memSummary" id="memSummary" hidden><summary>Resumen que guarda el agente</summary><p id="memSummaryText"></p></details>
           <div class="msgs" id="msgs" aria-live="polite"></div>
           <form class="composer" id="form"><input type="text" id="q" placeholder="Escribe un mensaje…" maxlength="2000" autocomplete="off"><button class="btn" id="send" type="submit">Enviar</button></form>
         </section>
@@ -483,7 +487,7 @@
         <textarea id="codeText" readonly spellcheck="false"></textarea>
         <div class="row" style="margin-top:8px"><button class="btn sm" id="codeCopy" type="button">Copiar todo</button><button class="btn sm sec" id="codeSave" type="button">Descargar archivo (si tu equipo lo permite)</button><small id="codeMsg"></small></div></dialog>`;
 
-    const f = {}; ['preset', 'prov', 'name', 'system', 'model', 'modelLbl', 'temp', 'tv', 'maxtok', 'mtv', 'memMode', 'memSize', 'msv', 'memSizeBox', 'apis', 'apiEx', 'ragOn', 'kn', 'knCount', 'ragK', 'rkv', 'ragChunk', 'ragQ', 'persona', 'style', 'format', 'formatCustom', 'rules', 'promptPrev', 'ragOut', 'tempExp', 'memExp', 'knMsg', 'msgs', 'form', 'q', 'send', 'title', 'warn', 'mine', 'mineMsg', 'sumry'].forEach(id => f[id] = $('#' + id));
+    const f = {}; ['preset', 'prov', 'name', 'system', 'model', 'modelLbl', 'temp', 'tv', 'maxtok', 'mtv', 'memMode', 'memSize', 'msv', 'memSizeBox', 'memSizeLbl', 'apis', 'apiEx', 'ragOn', 'kn', 'knCount', 'ragK', 'rkv', 'ragChunk', 'ragQ', 'persona', 'style', 'format', 'formatCustom', 'rules', 'promptPrev', 'ragOut', 'tempExp', 'memExp', 'knMsg', 'msgs', 'form', 'q', 'send', 'title', 'warn', 'mine', 'mineMsg', 'sumry'].forEach(id => f[id] = $('#' + id));
 
     const tabBtns = [...view.querySelectorAll('.ctab')], panes = [...view.querySelectorAll('.pane')];
     function showTab(n) {
@@ -521,7 +525,7 @@
       }
     }
     function drawSummary() {
-      const mem = cfg.memory.mode === 'none' ? 'sin memoria' : cfg.memory.mode === 'full' ? 'memoria completa' : `memoria de ${cfg.memory.size} mensajes`;
+      const mem = { none: 'sin memoria', full: 'memoria completa', unlimited: 'memoria indefinida', summary: `memoria de resumen (${cfg.memory.size} recientes)` }[cfg.memory.mode] || `memoria de ${cfg.memory.size} mensajes`;
       const nt = cfg.tools.length + cfg.apis.filter(a => a.name && a.url).length;
       f.sumry.innerHTML = [`Temperatura ${cfg.temperature}`, mem, `${nt} herramienta${nt === 1 ? '' : 's'}`, cfg.rag.enabled ? `RAG activo (${cfg.rag.k} fragmentos)` : 'sin RAG'].map(t => `<span>${esc(t)}</span>`).join('');
     }
@@ -553,18 +557,20 @@
       : ['Muy creativo', 'Cada respuesta es distinta y crece el riesgo de inventar datos o salirse del tema. Úsalo solo para lluvia de ideas.'];
     const MEM_TXT = m => m.mode === 'none' ? ['Sin memoria', 'Cada mensaje se responde como si fuera el primero: el agente no recuerda lo anterior. Sirve para consultas sueltas y es lo más barato en tokens.']
       : m.mode === 'full' ? ['Memoria completa', 'Recuerda hasta 20 mensajes. Mantiene bien el hilo de la conversación, pero gasta más tokens y puede arrastrar temas viejos.']
+      : m.mode === 'unlimited' ? ['Memoria indefinida', 'No olvida nada de la conversación: se reenvía completa en cada mensaje (hasta 200). Es la más fiel, pero cada respuesta cuesta más tokens y, cuando la charla es larga, puede ser lenta o chocar con el límite de Groq.']
+      : m.mode === 'summary' ? ['Memoria de resumen', `Los últimos ${m.size} mensajes van completos y todo lo anterior se condensa en un resumen que el propio modelo va actualizando. Recuerda lo importante de una charla larga gastando pocos tokens, aunque el resumen puede perder detalles. Cada vez que se resume se hace una llamada extra al modelo.`]
       : ['Memoria de ventana', `Recuerda solo los últimos ${m.size} mensajes (los tuyos y los suyos). Lo anterior se olvida. Equilibra contexto y costo.`];
     function drawExplain() {
       const [tn, tt] = TEMP_TXT(cfg.temperature), [mn, mt] = MEM_TXT(cfg.memory);
       f.tempExp.innerHTML = `<b>${tn}.</b> ${tt}`; f.memExp.innerHTML = `<b>${mn}.</b> ${mt}`;
     }
-    const remembers = () => cfg.memory.mode === 'none' ? 0 : (cfg.memory.mode === 'full' ? 20 : cfg.memory.size) - 1;
+    const remembers = () => cfg.memory.mode === 'none' ? 0 : cfg.memory.mode === 'unlimited' ? 199 : (cfg.memory.mode === 'full' ? 20 : cfg.memory.size) - 1; // mensajes previos que el agente ve completos
     function fill() {
       f.prov.value = provider; fillModels(); drawWarn();
       f.name.value = cfg.name; f.system.value = cfg.system; f.persona.value = cfg.persona || ''; f.style.value = cfg.style || ''; f.rules.value = cfg.rules || '';
       f.format.value = cfg.format || 'libre'; f.formatCustom.value = cfg.formatCustom || ''; drawFormat(); f.temp.value = cfg.temperature; f.tv.textContent = cfg.temperature;
       f.maxtok.value = cfg.maxTokens; f.mtv.textContent = cfg.maxTokens;
-      f.memMode.value = cfg.memory.mode; f.memSize.value = cfg.memory.size; f.msv.textContent = cfg.memory.size; f.memSizeBox.hidden = cfg.memory.mode !== 'window';
+      f.memMode.value = cfg.memory.mode; f.memSize.value = cfg.memory.size; f.msv.textContent = cfg.memory.size; f.memSizeBox.hidden = !['window', 'summary'].includes(cfg.memory.mode); f.memSizeLbl.firstChild.textContent = cfg.memory.mode === 'summary' ? 'Mensajes recientes completos: ' : 'Mensajes que recuerda: ';
       view.querySelectorAll('[data-tool]').forEach(c => c.checked = (cfg.tools || []).includes(c.dataset.tool));
       drawApis();
       f.ragOn.checked = cfg.rag.enabled; f.kn.value = cfg.knowledge || ''; f.ragK.value = cfg.rag.k; f.rkv.textContent = cfg.rag.k; f.ragChunk.value = String(cfg.rag.chunk);
@@ -582,10 +588,10 @@
       cfg.rag = { enabled: f.ragOn.checked, k: parseInt(f.ragK.value, 10), chunk: parseInt(f.ragChunk.value, 10) };
       cfg.tools = [...view.querySelectorAll('[data-tool]')].filter(c => c.checked).map(c => c.dataset.tool);
       f.tv.textContent = cfg.temperature; f.mtv.textContent = cfg.maxTokens; f.msv.textContent = cfg.memory.size; f.rkv.textContent = cfg.rag.k;
-      f.memSizeBox.hidden = cfg.memory.mode !== 'window'; f.knCount.textContent = cfg.knowledge.length + ' / 60000 caracteres';
+      f.memSizeBox.hidden = !['window', 'summary'].includes(cfg.memory.mode); f.memSizeLbl.firstChild.textContent = cfg.memory.mode === 'summary' ? 'Mensajes recientes completos: ' : 'Mensajes que recuerda: '; f.knCount.textContent = cfg.knowledge.length + ' / 60000 caracteres';
       const sig = cfg.memory.mode + cfg.memory.size;
       f.title.textContent = cfg.name || 'Mi agente'; drawSummary(); drawExplain(); drawPrompt(); save();
-      if (sig !== lastSig) { lastSig = sig; drawChat(); }
+      if (sig !== lastSig) { if (lastSig) resetMem(); lastSig = sig; drawChat(); }
     }
     let lastSig = '';
     view.querySelectorAll('.cfg input,.cfg select,.cfg textarea').forEach(i => { if (!['preset', 'prov', 'mine', 'apiEx', 'ragQ', 'knFileIn', 'impFile'].includes(i.id) && !i.closest('.apirow')) { i.addEventListener('input', read); i.addEventListener('change', read); } });
@@ -593,7 +599,7 @@
     if (!groqModels) api('/api/models').then(r => { groqModels = r.models; if (provider === 'groq' && f.model.isConnected) fillModels(); }).catch(() => {});
     f.prov.onchange = () => { provider = f.prov.value; setSettings({ provider }); fillModels(); drawWarn(); };
     f.prov.value = provider;
-    f.preset.onchange = () => { if (f.preset.value) { setCfg(window.PRESETS[f.preset.value]); chat = []; store.set('chat', chat); drawChat(); } f.preset.value = ''; };
+    f.preset.onchange = () => { if (f.preset.value) { setCfg(window.PRESETS[f.preset.value]); chat = []; resetMem(); store.set('chat', chat); drawChat(); } f.preset.value = ''; };
     function setCfg(o) {
       const c = JSON.parse(JSON.stringify(o));
       Object.assign(cfg, { persona: '', style: '', rules: '', format: 'libre', formatCustom: '' }, window.PRESETS.basico, c);
@@ -671,7 +677,7 @@
       try { mine = await api('/api/agents'); } catch (e) { mine = []; }
       f.mine.innerHTML = '<option value="">— ninguno —</option>' + mine.map(a => `<option ${a.name === select ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
     }
-    f.mine.onchange = () => { const a = mine.find(x => x.name === f.mine.value); if (a) { setCfg(a.config); chat = []; store.set('chat', chat); drawChat(); note('Cargado: ' + a.name); } };
+    f.mine.onchange = () => { const a = mine.find(x => x.name === f.mine.value); if (a) { setCfg(a.config); chat = []; resetMem(); store.set('chat', chat); drawChat(); note('Cargado: ' + a.name); } };
     $('#mineSave').onclick = async () => {
       read(); const name = (cfg.name || '').trim(); if (!name) return note('Ponle un nombre al agente.');
       try { await api('/api/agents/' + encodeURIComponent(name), 'PUT', { config: cfg }); await loadMine(name); note('✓ Guardado en tu cuenta: ' + name); } catch (e) { note(e.message); }
@@ -692,17 +698,18 @@
     function drawChat() {
       f.msgs.innerHTML = '';
       if (!chat.length) f.msgs.appendChild(el('div', { class: 'empty' }, '<p><b>Escribe algo para probar tu agente.</b></p><p>Cambia temperatura, memoria, herramientas o RAG y vuelve a preguntar para ver la diferencia.</p>'));
-      const keepFrom = chat.length - remembers();
+      const keepFrom = chat.length - remembers(), summ = cfg.memory.mode === 'summary', cls = summ ? 'sumd' : 'forgot';
       chat.forEach((m, i) => {
         const n0 = f.msgs.childElementCount;
         if (m.role === 'user') bubble('user', m.content); else { trace(m.steps); bubble('bot', m.content); }
-        if (i < keepFrom) [...f.msgs.children].slice(n0).forEach(e => e.classList.add('forgot'));
+        if (i < keepFrom) [...f.msgs.children].slice(n0).forEach(e => e.classList.add(cls));
       });
-      const lastForgot = [...f.msgs.querySelectorAll('.forgot')].pop();
-      if (lastForgot) lastForgot.after(el('div', { class: 'forgotNote' }, 'Lo atenuado ya no está en la memoria del agente'));
+      const lastOld = [...f.msgs.querySelectorAll('.' + cls)].pop();
+      if (lastOld) lastOld.after(el('div', { class: 'forgotNote' }, summ ? 'Lo marcado ya solo está en el resumen de la memoria' : 'Lo atenuado ya no está en la memoria del agente'));
+      const ms = $('#memSummary'); ms.hidden = !(summ && memState.summary); $('#memSummaryText').textContent = memState.summary;
       f.msgs.scrollTop = f.msgs.scrollHeight;
     }
-    $('#clear').onclick = () => { chat = []; store.set('chat', chat); drawChat(); };
+    $('#clear').onclick = () => { chat = []; resetMem(); store.set('chat', chat); drawChat(); };
 
     // Modo Ollama: el bucle corre en tu navegador; el servidor solo prepara el prompt y ejecuta las herramientas.
     async function askOllama(history) {
@@ -729,8 +736,8 @@
     }
     const ask = text => {
       const history = chat.map(m => ({ role: m.role, content: m.content })).concat({ role: 'user', content: text });
-      if (provider === 'server') return api('/api/agent', 'POST', { config: cfg, history, provider: 'server', ollamaModel: f.model.value });
-      return provider === 'ollama' ? askOllama(history) : api('/api/agent', 'POST', { config: cfg, history });
+      if (provider === 'server') return api('/api/agent', 'POST', { config: cfg, history, provider: 'server', ollamaModel: f.model.value, memoryState: memState });
+      return provider === 'ollama' ? askOllama(history) : api('/api/agent', 'POST', { config: cfg, history, memoryState: memState });
     };
     f.form.onsubmit = async e => {
       e.preventDefault(); const text = f.q.value.trim(); if (!text) return;
@@ -739,7 +746,7 @@
       bubble('user', text); const typing = el('div', { class: 'typing' }, 'El agente está pensando…'); f.msgs.appendChild(typing); f.msgs.scrollTop = 1e9;
       try {
         const data = await ask(text);
-        chat.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply, steps: data.steps }); store.set('chat', chat.slice(-30));
+        chat.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply, steps: data.steps }); if (data.memoryState) memState = data.memoryState; saveChat();
         drawChat();
       } catch (err) { typing.remove(); f.msgs.appendChild(el('div', { class: 'msg err' })).textContent = err.message; f.msgs.scrollTop = 1e9; }
       finally { f.send.disabled = false; f.q.focus(); }
@@ -826,7 +833,9 @@ def calculadora(expresion):
     const ragOn = !!(cfg.rag && cfg.rag.enabled);
     const apis = (cfg.apis || []).filter(a => slugApi(a.name) && /^https:\/\//i.test(a.url));
     const mem = cfg.memory || { mode: 'window', size: 6 };
-    const memN = mem.mode === 'none' ? 1 : mem.mode === 'full' ? 20 : mem.size;
+    const memN = mem.mode === 'none' ? 1 : mem.mode === 'full' ? 20 : mem.mode === 'unlimited' ? 1000 : mem.size;
+    const memLabel = { none: 'sin memoria', full: 'memoria completa', unlimited: 'memoria indefinida', summary: 'mensajes recientes completos; lo anterior se resume' }[mem.mode] || 'ventana';
+    const summ = mem.mode === 'summary';
     const defs = toolList.filter(t => sel.includes(t.id));
     const schemas = {
       calculadora: { properties: { expresion: { type: 'string' } }, required: ['expresion'] },
@@ -868,7 +877,7 @@ client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = ${py(cfg.model)}
 TEMPERATURE = ${Number(cfg.temperature) || 0}      # 0 = preciso · 1.5 = creativo
 MAX_TOKENS = ${(cfg.maxTokens || 700) + (/^(openai\/gpt-oss|qwen\/)/.test(cfg.model) ? 800 : 0)}
-MEMORIA = ${memN}      # cuántos mensajes recuerda (${mem.mode === 'none' ? 'sin memoria' : mem.mode === 'full' ? 'memoria completa' : 'ventana'})
+MEMORIA = ${memN}      # cuántos mensajes recuerda (${memLabel})
 SYSTEM = ${py(systemText)}      # nombre, personalidad, estilo, formato y reglas ya incluidos
 CONOCIMIENTO = ${py(cfg.knowledge || '')}
 
@@ -878,9 +887,19 @@ FUNCIONES = {${fnNames.map(t => `"${t}": ${t}`).join(', ')}}
 TOOLS = json.loads(r\'\'\'${JSON.stringify(tools)}\'\'\')
 
 
-def responder(historial):
+${summ ? `def resumir(resumen, mensajes):
+    """Memoria de resumen: condensa los mensajes viejos en un texto corto que se va actualizando."""
+    texto = "\\n".join(f"{'Usuario' if m['role'] == 'user' else 'Agente'}: {m['content'][:800]}" for m in mensajes)
+    previo = f"Resumen anterior:\\n{resumen}\\n\\n" if resumen else ""
+    r = client.chat.completions.create(model=MODEL, temperature=0.2, max_tokens=MAX_TOKENS, messages=[
+        {"role": "system", "content": "Mantienes la memoria de una conversación. Escribe un resumen breve en español (máximo 8 líneas) con nombres, preferencias, cifras y decisiones. Responde solo con el resumen."},
+        {"role": "user", "content": f"{previo}Mensajes nuevos:\\n{texto}\\n\\nEscribe el resumen actualizado."}])
+    return (r.choices[0].message.content or "").strip()
+
+
+` : ''}def responder(historial${summ ? ', resumen=""' : ''}):
     """Bucle del agente: el modelo pide una herramienta, la ejecutamos y le devolvemos el resultado."""
-    messages = [{"role": "system", "content": SYSTEM}] + historial[-MEMORIA:]
+    messages = [{"role": "system", "content": SYSTEM${summ ? ' + (f"\\n\\nResumen de la conversación anterior:\\n{resumen}" if resumen else "")' : ''}}] + historial[-MEMORIA:]
     for _ in range(5):
         kwargs = dict(model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS, messages=messages)
         if TOOLS:
@@ -902,14 +921,17 @@ def responder(historial):
 
 
 if __name__ == "__main__":
-    historial = []
+    historial = []${summ ? '\n    resumen = ""' : ''}
     print(${py((cfg.name || 'Agente') + ' listo. Escribe "salir" para terminar.')})
     while True:
         texto = input("Tú: ").strip()
         if texto.lower() in ("salir", "exit", ""):
             break
-        historial.append({"role": "user", "content": texto})
-        respuesta = responder(historial)
+        historial.append({"role": "user", "content": texto})${summ ? `
+        if len(historial) > MEMORIA:  # lo viejo se condensa en el resumen
+            resumen = resumir(resumen, historial[:-MEMORIA])
+            historial = historial[-MEMORIA:]` : ''}
+        respuesta = responder(historial${summ ? ', resumen' : ''})
         historial.append({"role": "assistant", "content": respuesta})
         print("Agente:", respuesta)
 `;
@@ -927,7 +949,9 @@ if __name__ == "__main__":
     const ragOn = !!(cfg.rag && cfg.rag.enabled);
     const apis = (cfg.apis || []).filter(a => slugApi(a.name) && /^https:\/\//i.test(a.url));
     const mem = cfg.memory || { mode: 'window', size: 6 };
-    const memN = mem.mode === 'none' ? 1 : mem.mode === 'full' ? 20 : mem.size;
+    const memN = mem.mode === 'none' ? 1 : mem.mode === 'full' ? 20 : mem.mode === 'unlimited' ? 1000 : mem.size;
+    const memLabel = { none: 'sin memoria', full: 'memoria completa', unlimited: 'memoria indefinida', summary: 'mensajes recientes completos; lo anterior se resume' }[mem.mode] || 'ventana';
+    const summ = mem.mode === 'summary';
     const lines = (info.promptLines || []).filter(l => { const k = /\{(\w+)\}/.exec(l)[1]; return vars[k]; });
     const desc = id => (toolList.find(t => t.id === id) || {}).description || id;
     const pyFuncs = [];
@@ -968,7 +992,7 @@ import ast, json, math, operator, os, urllib.parse, urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import StructuredTool
 from langchain_groq import ChatGroq
@@ -976,7 +1000,7 @@ from langchain_groq import ChatGroq
 MODEL = ${py(cfg.model)}
 TEMPERATURE = ${Number(cfg.temperature) || 0}      # 0 = preciso · 1.5 = creativo
 MAX_TOKENS = ${(cfg.maxTokens || 700) + (/^(openai\/gpt-oss|qwen\/)/.test(cfg.model) ? 800 : 0)}
-MEMORIA = ${memN}      # cuántos mensajes recuerda (${mem.mode === 'none' ? 'sin memoria' : mem.mode === 'full' ? 'memoria completa' : 'ventana'})
+MEMORIA = ${memN}      # cuántos mensajes recuerda (${memLabel})
 CONOCIMIENTO = ${py(cfg.knowledge || '')}
 
 # 1) La plantilla del prompt: cada {variable} se llena desde VARIABLES.
@@ -1000,7 +1024,17 @@ llm = ChatGroq(model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS)
 cadena = prompt | (llm.bind_tools(HERRAMIENTAS) if HERRAMIENTAS else llm)
 
 
-def responder(mensajes):
+${summ ? `def resumir(resumen, mensajes):
+    """Memoria de resumen: condensa los mensajes viejos en un texto corto que se va actualizando."""
+    texto = "\\n".join(f"{'Usuario' if isinstance(m, HumanMessage) else 'Agente'}: {m.content[:800]}" for m in mensajes)
+    previo = f"Resumen anterior:\\n{resumen}\\n\\n" if resumen else ""
+    return llm.invoke([
+        SystemMessage("Mantienes la memoria de una conversación. Escribe un resumen breve en español (máximo 8 líneas) con nombres, preferencias, cifras y decisiones. Responde solo con el resumen."),
+        HumanMessage(f"{previo}Mensajes nuevos:\\n{texto}\\n\\nEscribe el resumen actualizado."),
+    ]).content.strip()
+
+
+` : ''}def responder(mensajes):
     """Bucle del agente: el modelo pide una herramienta, la ejecutamos y le devolvemos el resultado."""
     por_nombre = {h.name: h for h in HERRAMIENTAS}
     for _ in range(5):
@@ -1019,14 +1053,21 @@ def responder(mensajes):
 
 
 if __name__ == "__main__":
-    historial = []
+    historial = []${summ ? '\n    resumen = ""' : ''}
     print(${py((cfg.name || 'Agente') + ' listo. Escribe "salir" para terminar.')})
     while True:
         texto = input("Tú: ").strip()
         if texto.lower() in ("salir", "exit", ""):
-            break
+            break${summ ? `
+        nuevos = historial + [HumanMessage(texto)]
+        if len(nuevos) > MEMORIA:  # lo viejo se condensa en el resumen
+            resumen = resumir(resumen, nuevos[:-MEMORIA])
+            nuevos = nuevos[-MEMORIA:]
+        previo = [SystemMessage(f"Resumen de la conversación anterior:\\n{resumen}")] if resumen else []
+        respuesta = responder(previo + list(nuevos))
+        historial = nuevos + [AIMessage(respuesta)]` : `
         respuesta = responder((historial + [HumanMessage(texto)])[-MEMORIA:])
-        historial += [HumanMessage(texto), AIMessage(respuesta)]
+        historial += [HumanMessage(texto), AIMessage(respuesta)]`}
         print("Agente:", respuesta)
 `;
   }

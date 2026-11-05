@@ -69,7 +69,7 @@ window.MODULES = [
     id: 'm4', min: 20, title: 'Conocimiento y memoria', icon: '📚',
     goal: 'Hacer que el agente responda desde tus documentos y reconocer sus límites.',
     concepts: [
-      ['Memoria de la conversación', 'El agente recuerda lo que se dijo porque le reenviamos los últimos mensajes. Si los borras (Nueva conversación), olvida todo.'],
+      ['Memoria de la conversación', 'El agente recuerda lo que se dijo porque le reenviamos mensajes. Hay cinco tipos: sin memoria, ventana (los últimos N), resumen (lo reciente completo y lo viejo condensado), completa (hasta 20) e indefinida (todo, a cambio de más tokens). Si empiezas una conversación nueva, olvida todo.'],
       ['Conocimiento propio', 'Pegas tus notas y el agente las busca antes de responder. Es una versión mínima de RAG: buscar primero, responder después.'],
       ['Alucinación', 'Si la respuesta no está en las notas, un modelo mal instruido la inventa. La instrucción «si no está en las notas, dilo» lo corrige.'],
       ['Límites', 'Esta búsqueda compara palabras clave. En el curso completo se usan embeddings para buscar por significado.']
@@ -78,7 +78,7 @@ window.MODULES = [
       'Carga «Agente con notas» y pregúntale por el horario y por el costo de un curso.',
       'Pregunta algo que NO está en las notas. ¿Lo reconoce o lo inventa?',
       'En la sección 5 (RAG) agrega un documento de ejemplo (o pega tu propio texto), usa «Probar la búsqueda» para ver qué fragmentos encuentra y haz 3 preguntas al agente.',
-      'En la sección 3 (Memoria) elige «Sin memoria», luego «Ventana de 4» y «Completa». Dile tu nombre, charla un poco y pregunta cómo te llamas: lo atenuado en el chat es lo que ya olvidó.'
+      'En la pestaña 3 (Memoria) prueba «Sin memoria», «Ventana» con 2 mensajes y «Resumen» con 2 mensajes. Dile tu nombre, charla un poco y pregunta cómo te llamas: con ventana lo atenuado se olvida; con resumen lo marcado sigue vivo en el resumen que puedes leer sobre el chat.'
     ],
     preset: 'notas',
     check: ['Mi agente responde con datos de mis notas', 'Probé una pregunta que no está en las notas', 'Entendí cómo recuerda la conversación']

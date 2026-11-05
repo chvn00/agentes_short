@@ -34,7 +34,7 @@
       ['Y hasta 3 APIs propias.', svg([['🧮', 'Calcula'], ['🕐', 'Hora'], ['☀️', 'Clima'], ['🔌', 'Tu API']].map(([e, l], i) => { const x = 33 + i * 58; return box(x - 25, 26, 50, 46, i === 3 ? 'hl' : '') + em(x, 46, e, 24) + tx(x, 92, l); }).join(''))]
     ],
     m4: [
-      ['Lo viejo se olvida.', svg(`<g opacity=".25">${box(24, 8, 120, 24)}</g><g opacity=".5">${box(70, 38, 120, 24)}</g>${box(36, 68, 120, 24, 'hl')}${box(84, 96, 120, 20, 'hl')}` + em(214, 22, '🧠', 20))],
+      ['Ventana, resumen o indefinida.', svg(`<g opacity=".25">${box(24, 8, 120, 24)}</g><g opacity=".5">${box(70, 38, 120, 24)}</g>${box(36, 68, 120, 24, 'hl')}${box(84, 96, 120, 20, 'hl')}` + em(214, 22, '🧠', 20))],
       ['Busca primero, responde después.', svg(em(36, 40, '📄', 26) + em(36, 82, '📄', 26) + ar(58, 40, 100, 58) + ar(58, 82, 100, 64) + em(124, 60, '🔍', 34) + ar(150, 60, 186, 60) + em(210, 60, '🧠', 28))],
       ['Si no sabe, debe decirlo.', svg(em(36, 30, '❓', 24) + ar(58, 30, 120, 30, 'flow bad') + em(150, 30, '🌀', 24) + tx(210, 34, 'inventa', 'bad') + em(36, 84, '❓', 24) + ar(58, 84, 120, 84) + em(150, 84, '🧠', 24) + tx(204, 88, '«no sé»', 'ok'))],
       ['Compara palabras, no significado.', svg(box(14, 22, 100, 76, 'hl') + tx(64, 48, 'palabras') + tx(64, 72, 'iguales') + box(126, 22, 100, 76) + tx(176, 48, 'significado') + tx(176, 72, '(embeddings)') + tx(176, 108, 'curso completo', 'muted'))]

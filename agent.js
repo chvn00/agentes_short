@@ -248,7 +248,8 @@ const str = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
 
 const modelOf = m => { const id = RENAMED[m] || m; return typeof id === 'string' && MODEL_ID.test(id) ? id : DEFAULT_MODEL; };
 const clampInt = (v, lo, hi, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
-const MEMORY_MODES = ['none', 'window', 'full'];
+const MEMORY_MODES = ['none', 'window', 'summary', 'full', 'unlimited'];
+const UNLIMITED_MSGS = 200; // tope de seguridad de la memoria indefinida
 
 function sanitizeConfig(raw = {}) {
   const t = Number(raw.temperature);
@@ -279,7 +280,25 @@ function sanitizeConfig(raw = {}) {
 }
 
 // Cuántos mensajes recuerda el agente según su memoria.
-const historyLimit = cfg => cfg.memory.mode === 'none' ? 1 : cfg.memory.mode === 'full' ? 20 : cfg.memory.size;
+const historyLimit = cfg => cfg.memory.mode === 'none' ? 1 : cfg.memory.mode === 'full' ? 20 : cfg.memory.mode === 'unlimited' ? UNLIMITED_MSGS : cfg.memory.size;
+
+// Memoria de resumen: lo reciente va completo y lo anterior se condensa en un resumen que se va actualizando.
+const SUMMARY_MAX = 1500;
+function sanitizeMemoryState(ms) {
+  const o = ms && typeof ms === 'object' ? ms : {};
+  return { summary: str(o.summary, SUMMARY_MAX), upto: clampInt(o.upto, 0, UNLIMITED_MSGS, 0) };
+}
+async function summarize({ llm, cfg, previous, messages }) {
+  const transcript = messages.map(m => `${m.role === 'user' ? 'Usuario' : 'Agente'}: ${m.content.slice(0, 800)}`).join('\n');
+  const msg = await llm({
+    model: cfg.model, temperature: 0.2, maxTokens: 400,
+    messages: [
+      { role: 'system', content: 'Eres un asistente que mantiene la memoria de una conversación. Escribe un resumen breve en español (máximo 8 líneas) con los datos importantes: nombres, preferencias, cifras, decisiones y temas pendientes. Responde solo con el resumen.' },
+      { role: 'user', content: `${previous ? `Resumen anterior:\n${previous}\n\n` : ''}Mensajes nuevos para incorporar:\n${transcript}\n\nEscribe el resumen actualizado.` }
+    ]
+  });
+  return str(msg && msg.content, SUMMARY_MAX).trim();
+}
 
 function sanitizeHistory(h, limit = 12) {
   return (Array.isArray(h) ? h : [])
@@ -297,9 +316,25 @@ function toolsFor(cfg) {
 }
 
 // Ejecuta el bucle del agente: modelo → herramienta → observación → modelo…
-async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runtime }) {
+async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runtime, memoryState }) {
   const cfg = sanitizeConfig(config);
-  const messages = [{ role: 'system', content: buildSystem(cfg, runtime) }, ...sanitizeHistory(history, historyLimit(cfg))];
+  let system = buildSystem(cfg, runtime), memOut;
+  let past;
+  if (cfg.memory.mode === 'summary') {
+    const all = sanitizeHistory(history, UNLIMITED_MSGS), keep = Math.max(1, cfg.memory.size);
+    past = all.slice(-keep);
+    const older = all.slice(0, Math.max(0, all.length - keep));
+    let ms = sanitizeMemoryState(memoryState);
+    if (ms.upto > older.length) ms = { summary: '', upto: 0 };
+    const fresh = older.slice(ms.upto);
+    if (fresh.length) {
+      try { ms = { summary: await summarize({ llm, cfg, previous: ms.summary, messages: fresh }) || ms.summary, upto: older.length }; }
+      catch { /* sin resumen nuevo: se sigue con el anterior */ }
+    }
+    memOut = ms;
+    if (ms.summary) system += `\n\nResumen de la conversación anterior (ya no está completa):\n${ms.summary}`;
+  } else past = sanitizeHistory(history, historyLimit(cfg));
+  const messages = [{ role: 'system', content: system }, ...past];
   if (messages.length < 2 || messages[messages.length - 1].role !== 'user') throw Object.assign(new Error('Falta el mensaje del usuario'), { status: 400 });
   const avail = toolsFor(cfg);
   const tools = Object.values(avail).map(t => t.def);
@@ -308,7 +343,7 @@ async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runti
   for (let n = 0; n < MAX_STEPS; n++) {
     const msg = await llm({ model: cfg.model, temperature: cfg.temperature, maxTokens: cfg.maxTokens, messages, tools: tools.length ? tools : undefined });
     const calls = msg.tool_calls || [];
-    if (!calls.length) return { reply: msg.content || 'No pude generar una respuesta, intenta de nuevo.', steps };
+    if (!calls.length) return { reply: msg.content || 'No pude generar una respuesta, intenta de nuevo.', steps, memoryState: memOut };
     messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
     for (const call of calls) {
       const name = call.function && call.function.name;
@@ -319,7 +354,7 @@ async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runti
       messages.push({ role: 'tool', tool_call_id: call.id, content: result });
     }
   }
-  return { reply: 'Usé demasiadas herramientas sin llegar a una respuesta. Reformula la pregunta o simplifica las instrucciones del agente.', steps };
+  return { reply: 'Usé demasiadas herramientas sin llegar a una respuesta. Reformula la pregunta o simplifica las instrucciones del agente.', steps, memoryState: memOut };
 }
 
 async function execTool(avail, cfg, name, args, ctx) {

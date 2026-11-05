@@ -294,18 +294,18 @@ app.delete('/api/agents/:name', auth, wrap(async (req, res) => {
 
 /* Agente con Groq: usa la API key de la persona (o la del servidor si existe) */
 app.post('/api/agent', auth, limiter(20, 60000, req => 'u' + req.user.id), wrap(async (req, res) => {
-  const { config, history, provider, ollamaModel } = req.body || {};
+  const { config, history, provider, ollamaModel, memoryState } = req.body || {};
   pool.query('UPDATE users SET last_seen = now() WHERE id = $1', [req.user.id]).catch(() => {});
   if (provider === 'server') {
     const models = await serverOllama();
     if (!models) return res.status(400).json({ error: 'Este servidor no tiene modelos locales (Ollama). Elige Groq.' });
     const model = models.includes(ollamaModel) ? ollamaModel : models[0];
-    return res.json(await runAgent({ config, history, llm: makeOllamaLlm(model), runtime: { provider: 'Ollama, en el servidor del curso', model } }));
+    return res.json(await runAgent({ config, history, llm: makeOllamaLlm(model), memoryState, runtime: { provider: 'Ollama, en el servidor del curso', model } }));
   }
   const { rows } = await pool.query('SELECT groq_key FROM users WHERE id = $1', [req.user.id]);
   const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key)) || await sharedKey();
   if (!key) return res.status(400).json({ error: 'No hay clave de Groq: guárdala en «Mi cuenta», pide al docente la del curso o elige el modelo local del servidor.' });
-  res.json(await runAgent({ config, history, llm: makeLlm(key), runtime: { provider: 'Groq' } }));
+  res.json(await runAgent({ config, history, llm: makeLlm(key), memoryState, runtime: { provider: 'Groq' } }));
 }));
 
 /* Para el modo Ollama, el bucle corre en el navegador: estos dos puntos le dan lo que necesita */
