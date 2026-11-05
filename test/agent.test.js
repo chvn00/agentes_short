@@ -226,3 +226,27 @@ test('si el modelo mezcla chino en la respuesta, se reescribe o se filtra', asyn
   assert.match((await runAgent({ config: {}, history: [{ role: 'user', content: '你好' }], llm: c.llm })).reply, /吹风/);
   assert.strictEqual(c.calls.length, 1);
 });
+
+test('RAG: la búsqueda tolera plurales y quita palabras vacías', () => {
+  const { searchKnowledge } = require('../agent');
+  const notas = 'Horario: martes y jueves de 6 pm.\n\nCosto: la matrícula cuesta $1.200.000. Los egresados tienen 15 % de descuento.';
+  assert.match(searchKnowledge(notas, '¿Qué horarios tienen?')[0], /martes/);
+  assert.match(searchKnowledge(notas, '¿Qué descuento tienen los egresados?')[0], /15 %/);
+  assert.deepStrictEqual(searchKnowledge(notas, '¿Qué es esto?'), []);
+});
+
+test('RAG: el servidor busca solo y entrega los fragmentos aunque el modelo no llame la herramienta', async () => {
+  let system = '';
+  const llm = async req => { system = req.messages[0].content; return { content: 'ok' }; };
+  const knowledge = 'Horario: martes y jueves.\n\nCosto: la matrícula cuesta $1.200.000 COP.';
+  const r = await runAgent({ config: { knowledge, rag: { enabled: true, k: 2, chunk: 600 } }, history: [{ role: 'user', content: '¿Cuánto cuesta la matrícula?' }], llm });
+  assert.match(system, /Fragmentos de las notas[\s\S]*1\.200\.000/);
+  assert.strictEqual(r.steps[0].tool, 'buscar_conocimiento');
+  assert.strictEqual(r.steps[0].auto, true);
+  // Sin coincidencias y con notas cortas: se entregan completas.
+  await runAgent({ config: { knowledge, rag: { enabled: true } }, history: [{ role: 'user', content: 'zzz qqq' }], llm });
+  assert.match(system, /Notas completas/);
+  // Con RAG apagado no se busca nada.
+  const off = await runAgent({ config: { knowledge, rag: { enabled: false } }, history: [{ role: 'user', content: '¿Cuánto cuesta?' }], llm });
+  assert.strictEqual(off.steps.length, 0);
+});

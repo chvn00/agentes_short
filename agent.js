@@ -76,9 +76,15 @@ function calc(src) {
   return Math.round(out * 1e10) / 1e10;
 }
 
-// ---------- Búsqueda simple en las notas del estudiante (mini-RAG) ----------
-const norm = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+// ---------- Búsqueda en las notas del estudiante (mini-RAG) ----------
+const norm = t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const STOP = new Set(('que como cual cuales cuando donde quien quienes para por con sin los las del una uno unos unas este esta esto estos estas ese esa eso '
+  + 'muy mas menos pero sobre entre hay son ser fue era soy eres tiene tienen tengo hacer puedo puede pueden cuanto cuanta cuantos cuantas '
+  + 'dime dame necesito quiero saber favor hola tambien solo todo todos todas algo nada otro otra sus mis tus nos les ella ellos nuestro nuestra').split(' '));
 const words = t => norm(t).split(/[^a-z0-9ñ]+/).filter(w => w.length > 2);
+// «Raíz» muy simple: quita plurales y terminaciones comunes para que «horarios» encuentre «horario».
+const stem = w => (w.length > 4 ? w.replace(/(os|as|es|o|a|s|e)$/, '') : w).slice(0, 7);
+const keyStems = t => [...new Set(words(t).filter(w => !STOP.has(w)).map(stem))];
 
 function chunk(text, size = 600) {
   const out = [];
@@ -90,19 +96,35 @@ function chunk(text, size = 600) {
   return out;
 }
 
-// Devuelve los fragmentos más parecidos a la consulta, con su puntaje (palabras en común).
+// Devuelve los fragmentos más parecidos a la consulta, con su puntaje (palabras clave en común).
 function retrieve(text, query, k = 3, size = 600) {
-  const q = new Set(words(query));
+  const q = keyStems(query);
   const all = chunk(text, size);
-  if (!q.size) return { total: all.length, chunks: [] };
+  if (!q.length) return { total: all.length, chunks: [] };
+  const sets = all.map(c => new Set(words(c).map(stem)));
+  const df = Object.fromEntries(q.map(x => [x, sets.filter(st => st.has(x)).length]));
   const chunks = all
-    .map(c => { const w = new Set(words(c)); let hit = 0; q.forEach(x => { if (w.has(x)) hit++; }); return { text: c, score: hit, of: q.size }; })
+    .map((c, i) => {
+      let hit = 0, weight = 0;
+      q.forEach(x => { if (sets[i].has(x)) { hit++; weight += Math.log(1 + all.length / df[x]); } });
+      return { text: c, score: hit, of: q.length, weight };
+    })
     .filter(x => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, k);
+    .sort((a, b) => b.weight - a.weight || b.score - a.score)
+    .slice(0, k)
+    .map(({ text, score, of }) => ({ text, score, of }));
   return { total: all.length, chunks };
 }
 const searchKnowledge = (text, query, k = 3, size = 600) => retrieve(text, query, k, size).chunks.map(x => x.text);
+
+// Contexto para el modelo: los fragmentos encontrados; si no hay coincidencias y las notas son cortas, las notas completas.
+const WHOLE_NOTES_MAX = 4000;
+function ragContext(knowledge, query, k, size) {
+  const found = searchKnowledge(knowledge, query, k, size);
+  if (found.length) return { found: true, text: found.map((x, n) => `[${n + 1}] ${x}`).join('\n\n') };
+  if (knowledge.length <= WHOLE_NOTES_MAX) return { found: false, text: knowledge.trim(), whole: true };
+  return { found: false, text: '' };
+}
 
 // ---------- Clima (Open-Meteo, sin API key) ----------
 const WMO = {
@@ -181,8 +203,10 @@ const TOOLS = {
     def: fn('buscar_conocimiento', 'Busca fragmentos relevantes en las notas o documentos que cargó el usuario. Úsala antes de responder preguntas sobre ese material.', { consulta: { type: 'string', description: 'Palabras clave de lo que se busca' } }, ['consulta']),
     run: async ({ consulta }, ctx) => {
       if (!ctx.knowledge) return 'El usuario no ha cargado notas.';
-      const r = searchKnowledge(ctx.knowledge, String(consulta || ''), (ctx.rag && ctx.rag.k) || 3, (ctx.rag && ctx.rag.chunk) || 600);
-      return r.length ? r.map((x, n) => `[${n + 1}] ${x}`).join('\n\n') : 'No hay fragmentos relacionados en las notas.';
+      const q = typeof consulta === 'string' ? consulta : (consulta && typeof consulta === 'object' ? String(consulta.description || consulta.value || consulta.query || '') : String(consulta || ''));
+      const r = ragContext(ctx.knowledge, q, (ctx.rag && ctx.rag.k) || 3, (ctx.rag && ctx.rag.chunk) || 600);
+      if (r.found) return r.text;
+      return r.whole ? 'Sin coincidencias exactas. Estas son todas las notas:\n' + r.text : 'No hay fragmentos relacionados en las notas.';
     }
   }
 };
@@ -354,6 +378,15 @@ async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runti
   const avail = toolsFor(cfg);
   const tools = Object.values(avail).map(t => t.def);
   const steps = [];
+  if (cfg.rag.enabled && cfg.knowledge.trim()) { // RAG: el servidor busca con la pregunta y entrega los fragmentos, sin depender de que el modelo lo pida
+    const asked = past.filter(m => m.role === 'user').slice(-2).map(m => m.content).join(' ');
+    const r = ragContext(cfg.knowledge, asked, cfg.rag.k, cfg.rag.chunk);
+    const lastQ = past.filter(m => m.role === 'user').pop();
+    steps.push({ tool: 'buscar_conocimiento', args: { consulta: lastQ ? lastQ.content.slice(0, 200) : '' }, result: (r.found ? r.text : r.whole ? 'Sin coincidencias exactas; se usan las notas completas.' : 'No hay fragmentos relacionados en las notas.').slice(0, 2000), auto: true });
+    messages[0].content += r.found ? `\n\nFragmentos de las notas relacionados con la pregunta:\n${r.text}`
+      : r.whole ? `\n\nNotas completas del usuario (no hubo coincidencias exactas con la pregunta):\n${r.text}`
+      : '\n\nNo se encontraron fragmentos de las notas relacionados con la pregunta: si es sobre las notas, di que no está ahí.';
+  }
 
   for (let n = 0; n < MAX_STEPS; n++) {
     const msg = await llm({ model: cfg.model, temperature: cfg.temperature, maxTokens: cfg.maxTokens, messages, tools: tools.length ? tools : undefined });
@@ -412,7 +445,7 @@ const makerOf = id => (MAKERS.find(([re]) => re.test(id)) || [])[1];
 function promptVars(cfg, runtime) {
   const extra = ['Responde siempre en español, salvo que el usuario te escriba en otro idioma. Nunca mezcles caracteres chinos ni de otros alfabetos en la respuesta.'];
   if (cfg.tools.length || cfg.apis.length) extra.push('Cuando una herramienta pueda dar el dato exacto, úsala en vez de adivinar.');
-  if (cfg.rag.enabled) extra.push('Para preguntas sobre las notas del usuario, consulta primero la herramienta buscar_conocimiento y responde solo con lo que encuentres.');
+  if (cfg.rag.enabled) extra.push('Las notas del usuario se buscan automáticamente: con cada pregunta recibes abajo los fragmentos relacionados. Responde solo con lo que digan esos fragmentos; si no alcanzan, di que eso no está en las notas. Puedes llamar buscar_conocimiento con otras palabras si necesitas más.');
   else if (cfg.knowledge) extra.push('Notas del usuario:\n' + cfg.knowledge.slice(0, 6000));
   const instr = cfg.system.trim();
   const any = cfg.persona.trim() || cfg.style.trim() || formatText(cfg) || cfg.rules.trim() || instr;
@@ -434,11 +467,18 @@ async function runTool(rawConfig, name, args, fetchImpl = fetch, lookup) {
 }
 
 // Lo que un cliente necesita para dirigir el modelo por su cuenta.
-function prepare(rawConfig, rawRuntime) {
+function prepare(rawConfig, rawRuntime, rawQuery) {
   const cfg = sanitizeConfig(rawConfig);
   const rt = rawRuntime && typeof rawRuntime === 'object' ? { provider: str(rawRuntime.provider, 80), model: str(rawRuntime.model, 80) } : null;
   const runtime = rt && rt.provider ? rt : null;
-  return { system: buildSystem(cfg, runtime), vars: promptVars(cfg, runtime), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
+  let system = buildSystem(cfg, runtime), ragStep = null;
+  const query = str(rawQuery, 600);
+  if (query && cfg.rag.enabled && cfg.knowledge.trim()) { // misma recuperación automática que en runAgent, para el modo Ollama del navegador
+    const r = ragContext(cfg.knowledge, query, cfg.rag.k, cfg.rag.chunk);
+    ragStep = { tool: 'buscar_conocimiento', args: { consulta: query.slice(0, 200) }, result: (r.found ? r.text : r.whole ? 'Sin coincidencias exactas; se usan las notas completas.' : 'No hay fragmentos relacionados en las notas.').slice(0, 2000), auto: true };
+    system += r.found ? `\n\nFragmentos de las notas relacionados con la pregunta:\n${r.text}` : r.whole ? `\n\nNotas completas del usuario (no hubo coincidencias exactas con la pregunta):\n${r.text}` : '\n\nNo se encontraron fragmentos de las notas relacionados con la pregunta: si es sobre las notas, di que no está ahí.';
+  }
+  return { system, ragStep, vars: promptVars(cfg, runtime), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
 }
 
 module.exports = { stripCjk, runTool, prepare, buildSystem, promptVars, PROMPT_LINES, FORMATS, DEFAULT_MODEL, retrieve, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };

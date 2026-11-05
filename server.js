@@ -309,7 +309,7 @@ app.post('/api/agent', auth, limiter(20, 60000, req => 'u' + req.user.id), wrap(
 }));
 
 /* Para el modo Ollama, el bucle corre en el navegador: estos dos puntos le dan lo que necesita */
-app.post('/api/prepare', auth, (req, res) => res.json(prepare((req.body || {}).config, (req.body || {}).runtime)));
+app.post('/api/prepare', auth, (req, res) => res.json(prepare((req.body || {}).config, (req.body || {}).runtime, (req.body || {}).query)));
 
 app.post('/api/tool', auth, limiter(60, 60000, req => 'u' + req.user.id), wrap(async (req, res) => {
   const { config, name, args } = req.body || {};
@@ -397,7 +397,7 @@ app.post('/api/extract-text', auth, limiter(10, 60000, req => 'u' + req.user.id)
     const { extractText } = await import('unpdf');
     const r = await extractText(new Uint8Array(buf), { mergePages: true });
     text = String(r.text || ''); pages = r.totalPages;
-  } catch (e) { return res.status(400).json({ error: 'No pude leer ese PDF. Puede estar dañado o protegido con contraseña.' }); }
+  } catch (e) { console.error('[PDF] no se pudo leer:', e && e.message, '· Node', process.version); return res.status(400).json({ error: 'No pude leer ese PDF. Puede estar dañado o protegido con contraseña.' }); }
   text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   if (text.length < 20) return res.status(422).json({ error: 'Ese PDF no tiene texto seleccionable (parece una imagen escaneada). Prueba con otro o pega el texto.' });
   res.json({ text: text.slice(0, 60000), pages, truncated: text.length > 60000 });

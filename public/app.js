@@ -692,7 +692,7 @@
     function trace(steps) {
       if (!steps || !steps.length) return;
       const d = el('details', { class: 'trace' }, `<summary>🔧 El agente usó ${steps.length} herramienta${steps.length > 1 ? 's' : ''}</summary>` +
-        steps.map(s => `<div class="st"><b>${esc(s.tool)}</b>(${esc(JSON.stringify(s.args))})\n→ ${esc(s.result)}</div>`).join(''));
+        steps.map(s => `<div class="st"><b>${esc(s.tool)}</b>${s.auto ? ' <i>(búsqueda automática del RAG)</i>' : ''}(${esc(JSON.stringify(s.args))})\n→ ${esc(s.result)}</div>`).join(''));
       d.open = true; f.msgs.appendChild(d);
     }
     function drawChat() {
@@ -715,8 +715,9 @@
     async function askOllama(history) {
       const model = settings().ollamaModel;
       if (!model) throw new Error('Conecta Ollama primero (módulo 0, paso 6).');
-      const prep = await api('/api/prepare', 'POST', { config: cfg, runtime: runtime() });
-      const messages = [{ role: 'system', content: prep.system }, ...history.slice(-prep.historyLimit)], steps = [];
+      const lastQ = [...history].reverse().find(m => m.role === 'user');
+      const prep = await api('/api/prepare', 'POST', { config: cfg, runtime: runtime(), query: lastQ ? lastQ.content : '' });
+      const messages = [{ role: 'system', content: prep.system }, ...history.slice(-prep.historyLimit)], steps = prep.ragStep ? [prep.ragStep] : [];
       for (let n = 0; n < 5; n++) {
         let r;
         try {
