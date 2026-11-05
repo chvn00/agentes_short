@@ -123,6 +123,21 @@ async function clima(ciudad, fetchImpl) {
 }
 
 // ---------- Catálogo de herramientas ----------
+const DEFAULT_TZ = 'America/Bogota';
+const ZONES = {
+  colombia: 'America/Bogota', bogota: 'America/Bogota', bucaramanga: 'America/Bogota', medellin: 'America/Bogota', cali: 'America/Bogota',
+  mexico: 'America/Mexico_City', 'ciudad de mexico': 'America/Mexico_City', peru: 'America/Lima', lima: 'America/Lima', ecuador: 'America/Guayaquil', quito: 'America/Guayaquil',
+  venezuela: 'America/Caracas', caracas: 'America/Caracas', chile: 'America/Santiago', santiago: 'America/Santiago', argentina: 'America/Argentina/Buenos_Aires', 'buenos aires': 'America/Argentina/Buenos_Aires',
+  brasil: 'America/Sao_Paulo', 'sao paulo': 'America/Sao_Paulo', 'nueva york': 'America/New_York', 'new york': 'America/New_York', miami: 'America/New_York', 'los angeles': 'America/Los_Angeles', california: 'America/Los_Angeles',
+  espana: 'Europe/Madrid', madrid: 'Europe/Madrid', barcelona: 'Europe/Madrid', londres: 'Europe/London', london: 'Europe/London', paris: 'Europe/Paris', francia: 'Europe/Paris', alemania: 'Europe/Berlin', berlin: 'Europe/Berlin',
+  italia: 'Europe/Rome', roma: 'Europe/Rome', japon: 'Asia/Tokyo', tokio: 'Asia/Tokyo', tokyo: 'Asia/Tokyo', china: 'Asia/Shanghai', india: 'Asia/Kolkata', utc: 'UTC', gmt: 'UTC'
+};
+function resolveZone(asked) {
+  if (!asked) return { tz: DEFAULT_TZ, ok: true };
+  const key = asked.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const cand = ZONES[key] || asked.replace(/\s+/g, '_');
+  try { new Intl.DateTimeFormat('es-CO', { timeZone: cand }); return { tz: cand, ok: true }; } catch { return { tz: DEFAULT_TZ, ok: false }; }
+}
 const fn = (name, description, properties, required) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 
 const TOOLS = {
@@ -138,9 +153,13 @@ const TOOLS = {
     label: 'Fecha y hora',
     def: fn('fecha_hora', 'Devuelve la fecha y la hora actuales en la zona horaria indicada (por defecto Bogotá).', { zona: { type: 'string', description: 'Zona IANA, por ejemplo America/Bogota o Europe/Madrid' } }, []),
     run: async ({ zona }) => {
-      const tz = zona || 'America/Bogota';
-      try { return new Date().toLocaleString('es-CO', { timeZone: tz, dateStyle: 'full', timeStyle: 'short' }) + ` (${tz})`; }
-      catch { return `Zona horaria desconocida: ${tz}`; }
+      const asked = String(zona || '').trim();
+      const { tz, ok } = resolveZone(asked);
+      const now = new Date();
+      const text = now.toLocaleString('es-CO', { timeZone: tz, dateStyle: 'full', timeStyle: 'short' });
+      const iso = now.toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T');
+      const note = !ok ? ` No reconocí la zona «${asked}»; use la de Bogotá. Si necesitas otra, pide el nombre IANA, por ejemplo Europe/Madrid.` : '';
+      return `${text} (${tz}). ISO: ${iso}.${note}`;
     }
   },
   clima: {

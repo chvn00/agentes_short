@@ -154,3 +154,12 @@ test('el prompt le dice al modelo cuál es y desde dónde corre, para que no dig
 test('ALLaM figura como creado por SDAIA', () => {
   assert.match(prepare({}, { provider: 'Groq', model: 'allam-2-7b' }).system, /allam-2-7b, creado por SDAIA \(Arabia Saudita\) \(ejecutado en Groq\)/);
 });
+
+test('fecha_hora acepta nombres de país o ciudad y avisa si no reconoce la zona', async () => {
+  const { TOOLS } = require('../agent');
+  assert.match(await TOOLS.fecha_hora.run({}), /America\/Bogota/);
+  assert.match(await TOOLS.fecha_hora.run({ zona: 'España' }), /Europe\/Madrid/);
+  assert.match(await TOOLS.fecha_hora.run({ zona: 'Bucaramanga' }), /America\/Bogota/);
+  assert.doesNotMatch(await TOOLS.fecha_hora.run({ zona: 'Bucaramanga' }), /No reconocí/);
+  assert.match(await TOOLS.fecha_hora.run({ zona: 'Narnia' }), /No reconocí la zona/);
+});
