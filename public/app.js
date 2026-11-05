@@ -431,7 +431,7 @@
         <section class="panel cfg"><div class="cfgtop">
             <div class="field"><label for="mine">Mis agentes guardados</label><div class="row"><select id="mine" style="flex:1;min-width:0"><option value="">— ninguno —</option></select><button class="btn sm" id="mineSave" type="button">Guardar</button><button class="btn sm sec" id="mineDel" type="button">Borrar</button></div><small id="mineMsg">Se guardan en tu cuenta.</small></div>
             <div class="field"><label for="preset">Empezar desde un ejemplo</label><select id="preset"><option value="">— elige —</option>${Object.entries(window.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.name)}</option>`).join('')}</select></div>
-            <div class="field"><label>Exportar o importar</label><div class="row"><button class="btn sm" id="dlJson" type="button">Ver / copiar .json</button><button class="btn sm sec" id="dlLc" type="button">Python con LangChain</button><button class="btn sm sec" id="dlPy" type="button">Python con Groq</button><button class="btn sm sec" id="imp" type="button">Pegar .json</button></div></div>
+            <div class="field"><label>Exportar o importar</label><div class="row"><button class="btn sm" id="dlJson" type="button">Ver / copiar .json</button><button class="btn sm sec" id="dlLc" type="button">Python con LangChain</button><button class="btn sm sec" id="dlPy" type="button">Python con Groq</button><button class="btn sm" id="dlZip" type="button" title="Tu agente + guía paso a paso para ejecutarlo en casa">📦 Llevar a casa (.zip)</button><button class="btn sm sec" id="dlMd" type="button">Guía (.md)</button><button class="btn sm sec" id="imp" type="button">Pegar .json</button></div></div>
           </div>
           <div class="ctabs" role="tablist" aria-label="Configuración del agente">${Object.entries(TABS).map(([n, t]) => `<button type="button" class="ctab" role="tab" data-tab="${n}" aria-controls="pane${n}"><span class="n">${n}</span>${t}</button>`).join('')}</div>
           <div class="pane" id="pane1" role="tabpanel" data-pane="1"><div class="body">
@@ -778,6 +778,124 @@
       $('#codeMsg').textContent = ok ? '✓ Copiado' : 'Selecciona el texto y cópialo con Ctrl/Cmd + C';
     };
     $('#codeSave').onclick = () => download(codeFile, $('#codeText').value, codeMime);
+
+    /* paquete para llevar el agente a casa: scripts + guía + requisitos, en un .zip */
+    const TOOL_NAMES = { calculadora: 'calculadora', fecha_hora: 'fecha y hora', clima: 'clima (Open-Meteo)' };
+    const MEM_NAMES = { none: 'sin memoria', window: 'ventana de mensajes recientes', summary: 'resumen de la conversación', full: 'memoria completa (20 mensajes)', unlimited: 'memoria indefinida' };
+    function guideMd(f) {
+      const tools = [...(cfg.tools || []).map(t => TOOL_NAMES[t] || t), ...(cfg.apis || []).map(a => 'API: ' + a.name), ...(cfg.rag && cfg.rag.enabled && cfg.knowledge ? ['buscar en tus notas (RAG)'] : [])];
+      return `# ${cfg.name || 'Mi agente'} · llévalo a tu casa
+
+Este paquete contiene el agente que armaste en el **Taller de Agentes de IA** (Facultad de Ingeniería en Inteligencia Artificial, USTA). Funciona en tu computador, sin la página del taller.
+
+## Qué trae tu agente
+- **Modelo:** \`${cfg.model}\` (temperatura ${cfg.temperature}), que corre en Groq.
+- **Herramientas:** ${tools.length ? tools.join(', ') : 'ninguna'}.
+- **Memoria:** ${MEM_NAMES[(cfg.memory || {}).mode] || 'ventana'}.
+- **Notas propias:** ${cfg.knowledge ? cfg.knowledge.length + ' caracteres incluidos dentro del script' : 'no cargaste notas'}.
+
+## Archivos
+| Archivo | Para qué sirve |
+|---|---|
+| \`${f.py}\` | Tu agente con la librería de Groq. **Empieza por este.** |
+| \`${f.lc}\` | El mismo agente con LangChain (más cercano a lo que se usa en proyectos reales). |
+| \`${f.json}\` | Tu configuración. Puedes pegarla en el Constructor del taller con «Pegar .json». |
+| \`requirements.txt\` | Las librerías de Python que necesitas. |
+
+## Paso a paso
+
+### 1. Instala Python
+Necesitas Python 3.9 o más nuevo. Descárgalo en https://www.python.org/downloads/ (en Windows marca «Add Python to PATH»). Para comprobarlo, abre una terminal (Terminal en Mac, PowerShell en Windows) y escribe \`python3 --version\` (en Windows, \`python --version\`).
+
+### 2. Descomprime esta carpeta
+Y entra a ella desde la terminal:
+\`\`\`
+cd ruta/a/la/carpeta
+\`\`\`
+
+### 3. (Recomendado) Crea un entorno virtual
+Mac / Linux:
+\`\`\`
+python3 -m venv .venv
+source .venv/bin/activate
+\`\`\`
+Windows (PowerShell):
+\`\`\`
+python -m venv .venv
+.venv\\Scripts\\Activate.ps1
+\`\`\`
+
+### 4. Instala las librerías
+\`\`\`
+pip install -r requirements.txt
+\`\`\`
+
+### 5. Consigue tu clave gratis de Groq
+Entra a https://console.groq.com/keys, crea una cuenta y pulsa «Create API Key». Cópiala (empieza por \`gsk_\`). **Es personal: no la compartas ni la subas a internet.**
+
+### 6. Pon la clave en tu terminal
+Mac / Linux:
+\`\`\`
+export GROQ_API_KEY=gsk_tu_clave
+\`\`\`
+Windows (PowerShell):
+\`\`\`
+$env:GROQ_API_KEY="gsk_tu_clave"
+\`\`\`
+Esto dura mientras la terminal esté abierta; si la cierras, repite este paso.
+
+### 7. Ejecuta tu agente
+\`\`\`
+python3 ${f.py}
+\`\`\`
+(en Windows: \`python ${f.py}\`). Escribe tus preguntas y, para salir, cierra con Ctrl + C.
+
+## Si algo falla
+- **\`ModuleNotFoundError\`**: falta instalar las librerías (paso 4) o no activaste el entorno virtual (paso 3).
+- **\`GROQ_API_KEY\`/«401»**: la clave no está puesta en esta terminal o está mal copiada (paso 6).
+- **«429» o «rate limit»**: llegaste al límite gratuito de Groq; espera un minuto.
+- **«model decommissioned»**: Groq retira modelos de vez en cuando. Abre el script, busca la línea del modelo (\`${cfg.model}\`) y cámbiala por uno de https://console.groq.com/docs/models.
+- **\`zoneinfo\` o zona horaria en Windows**: \`pip install tzdata\` (ya está en requirements).
+
+## Cómo personalizarlo
+Abre el script con cualquier editor (VS Code, por ejemplo):
+- El texto del **prompt del sistema** define su rol, personalidad, estilo y reglas.
+- La **temperatura** (cerca de 0 = preciso, más alto = creativo) y el **modelo** están al inicio.
+- Las **herramientas** son funciones de Python: puedes añadir las tuyas siguiendo el mismo formato.
+${cfg.knowledge ? '- Tus **notas** están en la variable `CONOCIMIENTO`: edítala o reemplaza el texto por el de otros documentos.\n' : ''}
+## Ideas para seguir
+Conéctalo a una página web con FastAPI, guárdalo en GitHub, o desplégalo en Railway. El curso completo sigue disponible en la página del taller.
+`;
+    }
+    function zipBlob(files) { // zip sin compresión (suficiente para texto), sin librerías
+      const enc = new TextEncoder(), crcT = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+      const crc = b => { let c = ~0; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return ~c >>> 0; };
+      const u16 = n => [n & 255, (n >> 8) & 255], u32 = n => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+      const parts = [], central = []; let off = 0;
+      for (const [name, text] of files) {
+        const nb = enc.encode(name), d = enc.encode(text), c = crc(d);
+        const head = new Uint8Array([0x50, 0x4b, 3, 4, 20, 0, 0, 8, 0, 0, 0, 0, 0x21, 0, ...u32(c), ...u32(d.length), ...u32(d.length), ...u16(nb.length), 0, 0]); // bit 11: nombres UTF-8
+        parts.push(head, nb, d);
+        central.push(new Uint8Array([0x50, 0x4b, 1, 2, 20, 0, 20, 0, 0, 8, 0, 0, 0, 0, 0x21, 0, ...u32(c), ...u32(d.length), ...u32(d.length), ...u16(nb.length), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...u32(off)]), nb);
+        off += head.length + nb.length + d.length;
+      }
+      const cs = central.reduce((n, b) => n + b.length, 0);
+      return new Blob([...parts, ...central, new Uint8Array([0x50, 0x4b, 5, 6, 0, 0, 0, 0, ...u16(files.length), ...u16(files.length), ...u32(cs), ...u32(off), 0, 0])], { type: 'application/zip' });
+    }
+    async function packageFiles() {
+      read();
+      const p = await api('/api/prepare', 'POST', { config: cfg, runtime: runtime() }), sl = slug();
+      const f = { py: sl + '.py', lc: sl + '_langchain.py', json: sl + '.json' };
+      return { f, files: [
+        [sl + '/LEEME.md', guideMd(f)],
+        [sl + '/' + f.py, pythonScript(cfg, toolList, sl, p.system)],
+        [sl + '/' + f.lc, langchainScript(cfg, toolList, sl + '_langchain', p.vars)],
+        [sl + '/' + f.json, JSON.stringify(cfg, null, 2)],
+        [sl + '/requirements.txt', 'groq\nlangchain-groq\nlangchain-core\ntzdata\n']
+      ] };
+    }
+    $('#dlZip').onclick = async () => { try { const { files } = await packageFiles(); const a = el('a', { href: URL.createObjectURL(zipBlob(files)), download: slug() + '_para_casa.zip' }); document.body.appendChild(a); a.click(); a.remove(); } catch (e) { alert(e.message); } };
+    $('#dlMd').onclick = async () => { try { const { files } = await packageFiles(); showCode('Guía para ejecutar tu agente en casa', 'Es el archivo LEEME.md del paquete: los pasos para instalar y correr tu agente en tu equipo.', files[0][1], 'LEEME.md', 'text/markdown'); } catch (e) { alert(e.message); } };
     $('#dlJson').onclick = () => { read(); showCode('Configuración de tu agente (.json)', 'Cópiala y guárdala donde quieras; después puedes pegarla en un archivo .json y cargarla con «Cargar .json».', JSON.stringify(cfg, null, 2), slug() + '.json', 'application/json'); };
     $('#dlLc').onclick = async () => {
       read();
