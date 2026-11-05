@@ -55,7 +55,7 @@ test('el administrador entra con las variables de entorno y su nombre queda rese
 test('un estudiante no ve nada de administración', async () => {
   const r = await call('POST', '/api/register', { username: 'luis', password: 'password1', code: 'clase2026' });
   assert.strictEqual((await call('GET', '/api/me', undefined, r.cookie)).data.isAdmin, false);
-  for (const [m, p] of [['GET', '/api/admin/users'], ['GET', '/api/admin/shared-key'], ['PUT', '/api/admin/shared-key']]) {
+  for (const [m, p] of [['GET', '/api/admin/users']]) {
     assert.strictEqual((await call(m, p, {}, r.cookie)).status, 403, p);
     assert.strictEqual((await call(m, p, {})).status, 401, p);
   }
@@ -93,21 +93,12 @@ test('restablecer contraseña y borrar usuarios; la cuenta de administración es
   assert.ok(!(await call('GET', '/api/admin/users', undefined, adm)).data.some(x => x.username === 'luis'));
 });
 
-test('la clave de Groq del curso se valida y la usa quien no tiene la suya', async () => {
+test('no existe clave compartida del curso: sin clave propia el agente no corre en Groq', async () => {
   const adm = (await call('POST', '/api/login', { username: 'profe', password: 'clave-del-profe-1' })).cookie;
   const ana = (await call('POST', '/api/register', { username: 'ana', password: 'password1', code: 'clase2026' })).cookie;
-  const hist = [{ role: 'user', content: 'hola' }];
-  assert.strictEqual((await call('POST', '/api/agent', { config: {}, history: hist }, ana)).status, 400);
-  assert.strictEqual((await call('PUT', '/api/admin/shared-key', { key: 'gsk_bad' + 'D'.repeat(24) }, adm)).status, 400);
-  const ok = await call('PUT', '/api/admin/shared-key', { key: GOOD }, adm);
-  assert.strictEqual(ok.status, 200);
-  assert.ok(!JSON.stringify((await call('GET', '/api/admin/shared-key', undefined, adm)).data).includes(GOOD));
-  assert.strictEqual((await call('GET', '/api/info')).data.sharedKey, true);
-  seen.length = 0;
-  assert.strictEqual((await call('POST', '/api/agent', { config: {}, history: hist }, ana)).data.reply, 'hola');
-  assert.deepStrictEqual(seen, [GOOD]);
-  await call('DELETE', '/api/admin/shared-key', undefined, adm);
-  assert.strictEqual((await call('POST', '/api/agent', { config: {}, history: hist }, ana)).status, 400);
+  assert.strictEqual((await call('POST', '/api/agent', { config: {}, history: [{ role: 'user', content: 'hola' }] }, ana)).status, 400);
+  assert.strictEqual((await call('PUT', '/api/admin/shared-key', { key: GOOD }, adm)).status, 404);
+  assert.strictEqual((await call('GET', '/api/info')).data.sharedKey, undefined);
 });
 
 test('el administrador borra varios usuarios a la vez sin tocar su propia cuenta', async () => {

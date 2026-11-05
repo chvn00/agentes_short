@@ -6,7 +6,7 @@
   const el = (tag, attrs = {}, html = '') => { const e = document.createElement(tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); e.innerHTML = html; return e; };
 
   /* ---------- servidor y sesión ---------- */
-  let info = { needsCode: false, sharedKey: false, models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'], formats: {}, tools: [] };
+  let info = { needsCode: false, models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'], formats: {}, tools: [] };
   let me = null; // { username, hasKey, keyHint, progress, settings }
   let groqModels = null; // lista real de Groq (se pide una vez por sesión)
 
@@ -36,7 +36,7 @@
   const settings = () => me.settings || {};
   const setSettings = patch => { me.settings = Object.assign({}, me.settings, patch); saveState(); };
 
-  const moduleDone = m => m.setup ? (me.hasKey || info.sharedKey || !!info.serverOllama || !!settings().ollamaOk) : m.check.every((_, i) => checks()[m.id + '.' + i]);
+  const moduleDone = m => m.setup ? (me.hasKey || !!info.serverOllama || !!settings().ollamaOk) : m.check.every((_, i) => checks()[m.id + '.' + i]);
   const totalChecks = () => window.MODULES.reduce((n, m) => n + m.check.length, 0);
   const doneChecks = () => window.MODULES.reduce((n, m) => n + m.check.filter((_, i) => checks()[m.id + '.' + i]).length, 0);
   const modLabel = m => m.id.slice(1) + '. ' + m.title;
@@ -114,7 +114,7 @@
     const id = (location.hash || '#inicio').slice(1);
     const known = routes().some(r => r[0] === id) ? id : 'inicio';
     // Los modelos del servidor pueden aparecer o desaparecer (Ollama se abre o se cierra): se revisa al entrar y solo se redibuja si cambió algo.
-    if (['inicio', 'm0', 'constructor'].includes(known)) api('/api/info').then(i => { if (JSON.stringify(i.serverOllama) !== JSON.stringify(info.serverOllama) || i.sharedKey !== info.sharedKey) { info = i; route(); } }).catch(() => {});
+    if (['inicio', 'm0', 'constructor'].includes(known)) api('/api/info').then(i => { if (JSON.stringify(i.serverOllama) !== JSON.stringify(info.serverOllama)) { info = i; route(); } }).catch(() => {});
     drawNav(known);
     view.innerHTML = '';
     if (known === 'inicio') home();
@@ -139,11 +139,10 @@
         <p>Primero dejas listos tus modelos (todo desde el navegador, sin instalar nada), después aprendes las piezas de un agente y terminas con uno propio, probado y guardado en tu cuenta.</p>
         <a class="btn" href="#m0">${moduleDone(window.MODULES[0]) ? 'Ir al módulo 1' : 'Empezar: prepara tus modelos'}</a>
         <div class="dir"><span>Facultad de Ingeniería en Inteligencia Artificial · Universidad Santo Tomás, Bucaramanga</span><span>Curso dirigido por <b>Dr.-Ing. Cesar Hernando Valencia Niño</b></span></div></section>
-      ${me.isAdmin ? '<div class="card adminCard"><div><h3>👑 Consola del docente</h3><p id="admSum">Estudiantes, avance, agentes y clave de Groq del curso.</p></div><a class="btn" href="#admin">Abrir consola</a></div>' : ''}
+      ${me.isAdmin ? '<div class="card adminCard"><div><h3>👑 Consola del docente</h3><p id="admSum">Estudiantes, avance por módulo, actividad y agentes.</p></div><a class="btn" href="#admin">Abrir consola</a></div>' : ''}
       <div class="status"><h3 style="margin:0">Tu entorno</h3>
         <div class="row2"><span>Cuenta en el taller</span><span class="pill y">✓ ${esc(pretty(me.username))}</span></div>
         <div class="row2"><span>Groq con tu propia clave</span><span class="pill ${me.hasKey ? 'y' : 'n'}">${me.hasKey ? '✓ API key ' + esc(me.keyHint) : 'Sin clave propia'}</span></div>
-        <div class="row2"><span>Groq con la clave del curso</span><span class="pill ${info.sharedKey ? 'y' : 'n'}">${info.sharedKey ? '✓ Habilitada por el docente' : 'No habilitada'}</span></div>
         <div class="row2"><span>Modelos locales del servidor (sin instalar nada)</span><span class="pill ${info.serverOllama ? 'y' : 'n'}">${info.serverOllama ? '✓ ' + info.serverOllama.map(esc).join(', ') : 'No disponibles'}</span></div>
         ${moduleDone(window.MODULES[0]) ? '' : '<a href="#m0">Completar en el módulo 0 →</a>'}</div>
       <h2 class="sec-title">Agenda</h2>
@@ -188,10 +187,9 @@
     box.innerHTML = `
       <div class="status" style="margin:0 0 4px"><h3 style="margin:0">Modelos que ya puedes usar</h3>
         <div class="row2"><span>Modelos locales del servidor</span><span class="pill ${info.serverOllama ? 'y' : 'n'}">${info.serverOllama ? '✓ ' + info.serverOllama.map(esc).join(', ') : 'No disponibles'}</span></div>
-        <div class="row2"><span>Groq con la clave del curso</span><span class="pill ${info.sharedKey ? 'y' : 'n'}">${info.sharedKey ? '✓ Habilitada' : 'No habilitada'}</span></div>
         <div class="row2"><span>Groq con tu propia clave</span><span class="pill ${me.hasKey ? 'y' : 'n'}">${me.hasKey ? '✓ Guardada' : 'Pendiente'}</span></div>
-        <p style="margin:6px 0 0;color:var(--muted);font-size:14px"><b>No necesitas instalar nada.</b> Con cualquiera de los tres ya puedes crear agentes. Los pasos 1 y 2 son para tener tu propia clave de Groq (así no compartes el límite con el grupo).</p></div>
-      <div class="sstep ${checks()['s.groq'] ? 'ok' : ''}"><div class="num">1</div><h3>Crea tu cuenta en Groq <small style="font-weight:400;color:var(--muted)">(opcional si el docente habilitó la clave del curso)</small></h3>
+        <p style="margin:6px 0 0;color:var(--muted);font-size:14px"><b>No necesitas instalar nada.</b> Con cualquiera de los dos ya puedes crear agentes. Los pasos 1 y 2 son para crear tu propia clave de Groq.</p></div>
+      <div class="sstep ${checks()['s.groq'] ? 'ok' : ''}"><div class="num">1</div><h3>Crea tu cuenta en Groq</h3>
         <ol><li>Abre <b>console.groq.com</b> y pulsa <b>Sign up</b>.</li><li>Entra con Google, GitHub o tu correo.</li><li>Si te pide confirmar el correo, confírmalo y vuelve a entrar.</li></ol>
         <div class="act"><a class="btn sm" href="https://console.groq.com" target="_blank" rel="noopener">Abrir Groq ↗</a>${own('s.groq')}</div></div>
       <div class="sstep ${me.hasKey ? 'ok' : ''}"><div class="num">2</div><h3>Crea tu API key y guárdala aquí</h3>
@@ -286,10 +284,10 @@
 
   /* ---------- administración ---------- */
   async function adminPage() {
-    view.innerHTML = '<div class="pagehead"><h1>👑 Administración</h1><p>Estudiantes, avance por módulo, actividad y clave de Groq del curso.</p></div><div id="admBox"><p>Cargando…</p></div>';
+    view.innerHTML = '<div class="pagehead"><h1>👑 Administración</h1><p>Estudiantes, avance por módulo y actividad.</p></div><div id="admBox"><p>Cargando…</p></div>';
     const box = $('#admBox');
-    let users, sk;
-    try { [users, sk] = await Promise.all([api('/api/admin/users'), api('/api/admin/shared-key')]); }
+    let users;
+    try { users = await api('/api/admin/users'); }
     catch (e) { box.innerHTML = `<div class="notice">${esc(e.message)}</div>`; return; }
 
     const modKeys = window.MODULES.flatMap(m => m.check.map((_, i) => m.id + '.' + i));
@@ -304,10 +302,6 @@
     const sum = f => students.reduce((n, u) => n + f(u), 0);
 
     box.innerHTML = `
-      <div class="card"><h3>Clave de Groq del curso</h3>
-        <p style="margin-bottom:8px">Es opcional. La usan quienes todavía no guardaron su propia clave (cada estudiante puede guardar la suya en el módulo 0). Se guarda cifrada y nunca se muestra completa.</p>
-        <p class="msg2" id="skState">${sk.hasKey ? `<span class="good">✓ Guardada (${esc(sk.keyHint)})</span>` : sk.fromEnv ? '<span class="good">✓ Hay una clave definida en el servidor (variable GROQ_API_KEY)</span>' : '<span class="bad">Sin clave: cada estudiante necesita la suya.</span>'}</p>
-        <div class="act sk"><input type="password" id="skIn" placeholder="gsk_…" autocomplete="off"><button class="btn sm" id="skSave" type="button">Guardar y verificar</button>${sk.hasKey ? '<button class="btn sm sec" id="skDel" type="button">Borrar</button>' : ''}</div></div>
       <div class="stats">
         <div class="card"><b>${students.length}</b><span>estudiantes</span></div>
         <div class="card"><b>${active}</b><span>activos (últimos 15 min)</span></div>
@@ -324,13 +318,6 @@
         <td>${u.agents}</td><td>${u.msgs}</td><td>${u.toolCalls}</td><td>${esc(u.lastModel || '—')}</td><td>${u.hasKey ? '✓' : '—'}</td>
         <td class="acts">${u.agents ? '<button type="button" data-a="ag">Ver agentes</button>' : ''}${u.isAdmin ? '' : '<button type="button" data-a="pw">Nueva contraseña</button><button type="button" data-a="del" class="dng">🗑 Borrar usuario</button>'}</td></tr>`; }).join('') || '<tr><td colspan="16">Aún no hay usuarios.</td></tr>'}
       </tbody></table></div><div id="agView"></div>`;
-
-    $('#skSave').onclick = async () => {
-      const key = $('#skIn').value.trim(), st = $('#skState'); if (!key) { st.innerHTML = '<span class="bad">Pega la clave primero.</span>'; return; }
-      st.textContent = 'Verificando con Groq…';
-      try { await api('/api/admin/shared-key', 'PUT', { key }); adminPage(); } catch (e) { st.innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
-    };
-    if ($('#skDel')) $('#skDel').onclick = async () => { await api('/api/admin/shared-key', 'DELETE'); adminPage(); };
 
     $('#csv').onclick = () => {
       const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
@@ -417,7 +404,7 @@
     let memState = Object.assign({ summary: '', upto: 0 }, store.get('memstate', {})); // memoria de resumen: texto y cuántos mensajes ya resumió
     const resetMem = () => { memState = { summary: '', upto: 0 }; store.set('memstate', memState); };
     const saveChat = () => { const d = Math.max(0, chat.length - 100); store.set('chat', chat.slice(-100)); store.set('memstate', { summary: memState.summary, upto: Math.max(0, memState.upto - d) }); };
-    const canGroq = me.hasKey || info.sharedKey, canServer = !!info.serverOllama, canLocal = !!settings().ollamaOk;
+    const canGroq = me.hasKey, canServer = !!info.serverOllama, canLocal = !!settings().ollamaOk;
     let provider = settings().provider;
     if (!(provider === 'groq' || (provider === 'server' && canServer) || (provider === 'ollama' && canLocal))) provider = canGroq || !canServer ? 'groq' : 'server';
     const save = () => store.set('cfg', cfg);

@@ -5,9 +5,9 @@ window.MODULES = [
     goal: 'Dejar listos tus modelos desde el navegador: no hace falta descargar ni instalar nada.',
     concepts: [
       ['Modelos locales del servidor', 'El computador del docente corre modelos de Ollama y todos los usan desde esta página. No dependen de internet ni de cuentas externas, pero son más pequeños y algo más lentos.'],
-      ['Groq (modelos en la nube)', 'Groq presta modelos muy rápidos con un plan gratuito. El docente puede habilitar una clave del curso; si quieres la tuya, la creas con una cuenta en la web de Groq y la pegas aquí.'],
+      ['Groq (modelos en la nube)', 'Groq presta modelos muy rápidos con un plan gratuito. Cada estudiante crea su propia clave gratis con una cuenta en la web de Groq y la pega aquí.'],
       ['Tu API key es privada', 'Nunca la compartas ni la pegues en chats. Aquí se guarda cifrada y solo la usa el servidor para tus consultas. Puedes cambiarla o borrarla en «Mi cuenta».'],
-      ['Qué elegir', 'Para empezar, cualquiera sirve. Si todos usan la misma clave del curso, el límite de Groq se comparte entre el grupo: una clave propia o los modelos del servidor evitan esperas.']
+      ['Qué elegir', 'Para empezar, cualquiera sirve. Con tu propia clave el límite de Groq es solo tuyo; los modelos del servidor son otra opción sin clave.']
     ],
     steps: [], preset: null,
     check: []

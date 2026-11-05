@@ -27,11 +27,8 @@ async function ensureAdmin() {
 }
 const ready = init(pool).then(ensureAdmin);
 
-/* Clave de Groq compartida: la guarda el administrador en la base (cifrada) o viene del entorno */
-async function sharedKey() {
-  const { rows } = await pool.query('SELECT value FROM app_settings WHERE key = $1', ['shared_groq_key']);
-  return (rows[0] && decrypt(rows[0].value)) || process.env.GROQ_API_KEY || null;
-}
+/* Ya no hay clave compartida del curso: cada estudiante usa la suya. Se borra la que hubiera quedado guardada de antes. */
+ready.then(() => pool.query('DELETE FROM app_settings WHERE key = $1', ['shared_groq_key'])).catch(() => {});
 
 /* ---------- Groq ---------- */
 const REASONING = /^(openai\/gpt-oss|qwen\/)/;        // modelos que "piensan" antes de responder
@@ -172,7 +169,7 @@ app.use(express.json({ limit: '400kb' }));
 
 app.get('/api/info', wrap(async (req, res) => {
   res.json({
-    needsCode: !!ACCESS_CODE, adminReady, sharedKey: !!(await sharedKey()), serverOllama: await serverOllama(), models: MODELS,
+    needsCode: !!ACCESS_CODE, adminReady, serverOllama: await serverOllama(), models: MODELS,
     formats: Object.fromEntries(Object.entries(FORMATS).map(([k, v]) => [k, v.label])), promptLines: PROMPT_LINES.map(([, l]) => l),
     tools: Object.entries(TOOLS).map(([id, t]) => ({ id, label: t.label, description: t.def.function.description }))
   });
@@ -239,7 +236,7 @@ app.delete('/api/me/groq-key', auth, wrap(async (req, res) => {
 const modelCache = new Map();
 app.get('/api/models', auth, wrap(async (req, res) => {
   const { rows } = await pool.query('SELECT groq_key FROM users WHERE id = $1', [req.user.id]);
-  const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key)) || await sharedKey();
+  const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key));
   if (!key) return res.json({ models: MODELS, source: 'respaldo' });
   const hit = modelCache.get(key);
   if (hit && Date.now() - hit.t < 600000) return res.json({ models: hit.models, source: 'groq' });
@@ -310,7 +307,7 @@ app.post('/api/agent', auth, limiter(20, 60000, req => 'u' + req.user.id), wrap(
     return res.json(await tracked(req, model, runAgent({ config, history, llm: makeOllamaLlm(model), memoryState, runtime: { provider: 'Ollama, en el servidor del curso', model } })));
   }
   const { rows } = await pool.query('SELECT groq_key FROM users WHERE id = $1', [req.user.id]);
-  const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key)) || await sharedKey();
+  const key = (rows[0] && rows[0].groq_key && decrypt(rows[0].groq_key));
   if (!key) return res.status(400).json({ error: 'No hay clave de Groq: guárdala en «Mi cuenta», pide al docente la del curso o elige el modelo local del servidor.' });
   res.json(await tracked(req, config && config.model, runAgent({ config, history, llm: makeLlm(key), memoryState, runtime: { provider: 'Groq' } })));
 }));
@@ -373,24 +370,6 @@ admin.delete('/users/:id', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Clave de Groq del curso: la usan quienes aún no guardaron la suya.
-admin.get('/shared-key', wrap(async (req, res) => {
-  const { rows } = await pool.query('SELECT value FROM app_settings WHERE key = $1', ['shared_groq_key']);
-  const k = rows[0] && decrypt(rows[0].value);
-  res.json({ hasKey: !!k, keyHint: k ? hint(k) : null, fromEnv: !k && !!process.env.GROQ_API_KEY });
-}));
-admin.put('/shared-key', wrap(async (req, res) => {
-  const key = String((req.body || {}).key || '').trim();
-  if (!/^gsk_[A-Za-z0-9]{20,}$/.test(key)) return res.status(400).json({ error: 'Esa clave no tiene el formato de Groq: empieza por gsk_.' });
-  if (!(await keyIsValid(key))) return res.status(400).json({ error: 'Groq no aceptó esa clave. Revisa que la copiaste completa.' });
-  await pool.query('DELETE FROM app_settings WHERE key = $1', ['shared_groq_key']);
-  await pool.query('INSERT INTO app_settings (key, value) VALUES ($1,$2)', ['shared_groq_key', encrypt(key)]);
-  res.json({ hasKey: true, keyHint: hint(key) });
-}));
-admin.delete('/shared-key', wrap(async (req, res) => {
-  await pool.query('DELETE FROM app_settings WHERE key = $1', ['shared_groq_key']);
-  res.json({ ok: true });
-}));
 app.use('/api/admin', admin);
 
 // Siempre revalidar: así un despliegue nuevo se ve al recargar y no queda una versión vieja en caché.

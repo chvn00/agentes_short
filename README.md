@@ -42,7 +42,6 @@ El administrador no ve las API keys de los estudiantes, solo si la tienen.
 Los estudiantes no necesitan descargar ni instalar programas. Tienen tres opciones y la página elige la que esté disponible:
 
 - **Modelos locales del servidor (Ollama):** el equipo que corre el taller (por ejemplo tu Mac Mini) tiene Ollama con uno o más modelos, y todos los usan desde la página. El servidor los detecta solo (variable `OLLAMA_URL`, por defecto `http://localhost:11434`). No gastan cuota ni dependen de cuentas externas. Con muchos estudiantes a la vez las respuestas se ponen en cola, así que se nota más la lentitud.
-- **Groq con la clave del curso:** el docente guarda una clave en **Administración** y quien no tiene la suya la usa. El límite de Groq se comparte entre todo el grupo.
 - **Groq con la clave propia:** cada estudiante puede crear una cuenta en la web de Groq y pegar su clave en el módulo 0 o en **Mi cuenta**. La lista de modelos se pide a Groq en vivo (`/api/models`), porque Groq retira modelos cada pocos meses; el 16/08/2026 retiró `llama-3.3-70b-versatile` y `llama-3.1-8b-instant`, y los agentes guardados con esos nombres se pasan solos a `gpt-oss`. Si un modelo desaparece, el chat lo dice con un mensaje claro.
 
 Opcional y avanzado: quien pueda instalar programas puede conectar el Ollama de su propio equipo (módulo 0, sección plegada «Opcional y avanzado»). El bucle del agente corre entonces en su navegador.
@@ -101,7 +100,6 @@ Abre `http://localhost:3000`. Sin `DATABASE_URL` usa una base en memoria (las cu
 | `APP_SECRET` | Secreto largo y aleatorio: firma sesiones y cifra las API keys. **Necesaria en producción** |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Cuenta del docente (contraseña de 8 o más caracteres) |
 | `ACCESS_CODE` | Código de clase que se pide al crear la cuenta. Recomendado |
-| `GROQ_API_KEY` | Opcional: clave del servidor para quien aún no guardó la suya (también se puede guardar desde Administración) |
 | `PORT` | Puerto (Railway lo asigna solo) |
 
 **Railway:** conecta este repositorio, agrega un servicio **PostgreSQL** al proyecto y en las *Variables* del servicio web enlaza `DATABASE_URL` (referencia al Postgres) y define `APP_SECRET`, `ACCESS_CODE`, `ADMIN_USERNAME` y `ADMIN_PASSWORD`.
