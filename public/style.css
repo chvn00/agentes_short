@@ -229,3 +229,29 @@ details.optLocal .sstep{margin-top:10px}
 dialog.codeDlg{width:min(780px,94vw);border:0;border-radius:16px;padding:18px 20px;box-shadow:0 24px 60px rgba(7,26,61,.35)}
 dialog.codeDlg::backdrop{background:rgba(7,26,61,.5)}
 dialog.codeDlg textarea{width:100%;height:min(52vh,420px);font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace;border:1px solid #cfd6e4;border-radius:10px;padding:10px;resize:vertical;background:#0f1b33;color:#d7e3ff}
+
+/* ===== Ideas clave: ilustraciones ===== */
+.visgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+.vis{position:relative;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:12px 14px 14px;cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s;box-shadow:0 4px 18px rgba(13,58,173,.07)}
+.vis:hover{transform:translateY(-3px);border-color:var(--light);box-shadow:0 10px 26px rgba(13,58,173,.14)}
+.vis:focus-visible{outline:3px solid rgba(30,80,200,.35);outline-offset:2px}
+.vis .art{background:linear-gradient(160deg,#f3f7ff,#e6efff);border-radius:12px;margin-bottom:10px;padding:6px}
+.vis .art svg{display:block;width:100%;height:auto}
+.vis h3{font-size:16px;margin:0 28px 2px 0;color:var(--navy)}
+.vis .cap{margin:0;padding-right:30px;color:var(--muted);font-size:14px;line-height:1.35}
+.vis .more{display:none;margin:10px 0 0;padding-top:10px;border-top:1px dashed #b9c4de;color:#3b4252;font-size:14.5px}
+.vis.open .more{display:block}
+.vis .tap{position:absolute;right:14px;bottom:12px;width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:15px;line-height:1}
+.vis .art .vb{fill:#fff;stroke:#9db4e6;stroke-width:1.5}
+.vis .art .vb.hl{fill:#e3edff;stroke:#0d3aad;stroke-width:2}
+.vis .art .vt{font:600 11px 'Segoe UI',Roboto,Arial,sans-serif;fill:#26324d}
+.vis .art .vt.l{text-anchor:start;font-size:12.5px}
+.vis .art .vt.muted{fill:#667085;font-weight:500}
+.vis .art .vt.bad,.vis .art .va.bad{fill:#e0546b;stroke:#e0546b}
+.vis .art .vt.bad{stroke:none}
+.vis .art .vt.ok{fill:#3fae5b}
+.vis .art .va{stroke:#0d3aad;stroke-width:2.2;fill:none;stroke-linecap:round}
+.vis .art .va.flow{stroke-dasharray:6 5;animation:vflow 1.1s linear infinite}
+.vis .art .va.flow.bad{stroke:#e0546b}
+@keyframes vflow{to{stroke-dashoffset:-22}}
+@media(prefers-reduced-motion:reduce){.vis .art .va.flow{animation:none}.vis{transition:none}}

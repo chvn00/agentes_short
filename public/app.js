@@ -131,10 +131,8 @@
 
   /* ---------- inicio ---------- */
   function home() {
-    let start = 0;
     const rows = window.MODULES.map(m => {
-      const t = `${Math.floor(start / 60)}:${String(start % 60).padStart(2, '0')}`; start += m.min;
-      return `<a href="#${m.id}" style="text-decoration:none"><li><div class="ic">${m.icon}</div><div class="t"><b>${esc(modLabel(m))}</b><span>${esc(m.goal)}</span></div><div class="m">${m.min} min<small>desde ${t}</small>${moduleDone(m) ? '<div class="done">✓ listo</div>' : ''}</div></li></a>`;
+      return `<a href="#${m.id}" style="text-decoration:none"><li><div class="ic">${m.icon}</div><div class="t"><b>${esc(modLabel(m))}</b><span>${esc(m.goal)}</span></div><div class="m">${moduleDone(m) ? '<div class="done">✓ listo</div>' : ''}</div></li></a>`;
     }).join('');
     view.innerHTML = `
       <section class="hero"><span class="kick">Taller de 2 horas</span><h1>Hola, ${esc(pretty(me.username))}: vamos a crear tu agente de IA</h1>
@@ -161,9 +159,9 @@
   function lesson(m) {
     const idx = window.MODULES.indexOf(m), prev = window.MODULES[idx - 1], next = window.MODULES[idx + 1];
     view.innerHTML = `
-      <div class="pagehead"><div class="min">Módulo ${m.id.slice(1)} · ${m.min} min</div><h1>${m.icon} ${esc(m.title)}</h1><p>${esc(m.goal)}</p></div>
+      <div class="pagehead"><div class="min">Módulo ${m.id.slice(1)}</div><h1>${m.icon} ${esc(m.title)}</h1><p>${esc(m.goal)}</p></div>
       <h2 class="sec-title">Ideas clave</h2>
-      <div class="grid g2">${m.concepts.map(c => `<div class="card"><h3>${esc(c[0])}</h3><p>${esc(c[1])}</p></div>`).join('')}</div>
+      <div class="visgrid">${m.concepts.map((c, i) => { const v = ((window.VISUALS || {})[m.id] || [])[i] || { cap: '', art: '' }; return `<div class="vis" role="button" tabindex="0" aria-expanded="false"><div class="art">${v.art}</div><h3>${esc(c[0])}</h3><p class="cap">${esc(v.cap)}</p><p class="more">${esc(c[1])}</p><span class="tap" aria-hidden="true">＋</span></div>`; }).join('')}</div>
       ${m.setup ? '<h2 class="sec-title">Paso a paso</h2><div class="setup" id="setup"></div>' : `
       <h2 class="sec-title">Práctica guiada</h2>
       <ol class="steps">${m.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
@@ -171,6 +169,10 @@
       <h2 class="sec-title">Puntos de control</h2>
       <div class="checks">${m.check.map((c, k) => `<label><input type="checkbox" data-k="${m.id}.${k}" ${checks()[m.id + '.' + k] ? 'checked' : ''}><span>${esc(c)}</span></label>`).join('')}</div>`}
       <div class="pager">${prev ? `<a class="btn sec" href="#${prev.id}">← ${esc(prev.title)}</a>` : '<span></span>'}${next ? `<a class="btn" href="#${next.id}">${esc(next.title)} →</a>` : '<a class="btn" href="#recursos">Recursos →</a>'}</div>`;
+    view.querySelectorAll('.vis').forEach(v => {
+      const toggle = () => { const on = v.classList.toggle('open'); v.setAttribute('aria-expanded', on); v.querySelector('.tap').textContent = on ? '−' : '＋'; };
+      v.onclick = toggle; v.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } };
+    });
     if (m.setup) return setup();
     $('#open').onclick = () => { if (m.preset) { store.set('cfg', window.PRESETS[m.preset]); store.set('chat', []); } };
     view.querySelectorAll('.checks input').forEach(c => c.onchange = () => { setCheck(c.dataset.k, c.checked); drawNav(m.id); });
