@@ -15,10 +15,6 @@ button{font:inherit;cursor:pointer}
 #nav a.on{background:var(--blue);color:#fff}
 #nav a .ok{color:var(--green);margin-left:4px}
 #nav a.on .ok{color:#9be3b0}
-.clock{display:flex;align-items:center;gap:6px;background:var(--navy);color:#fff;padding:5px 8px 5px 14px;border-radius:20px;font-variant-numeric:tabular-nums;font-weight:700}
-.clock.warn{background:#a86c00}.clock.late{background:var(--red)}
-.clock button{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:50%;width:28px;height:28px}
-.clock button:hover{background:rgba(255,255,255,.3)}
 main{max-width:1180px;margin:0 auto;padding:26px 22px 40px}
 .foot{text-align:center;color:var(--muted);font-size:13px;padding:18px}
 .hero{background:linear-gradient(120deg,var(--navy),var(--blue) 60%,var(--mid));color:#fff;border-radius:18px;padding:40px 36px;margin-bottom:24px}
@@ -86,7 +82,7 @@ dialog input{width:100%;border:1px solid #cfd6e4;border-radius:10px;padding:9px 
 .who{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--navy)}
 .who button{border:1px solid var(--border);background:#fff;border-radius:16px;padding:4px 12px;font-size:13px}
 .who button:hover{background:#eef2fb}
-body.guest #nav,body.guest .clock{display:none}
+body.guest #nav{display:none}
 .auth{max-width:420px;margin:30px auto}
 .auth .tabs{display:flex;gap:6px;margin-bottom:14px}
 .auth .tabs button{flex:1;border:1px solid var(--border);background:#fff;border-radius:12px;padding:9px;font-weight:700;color:var(--muted)}
@@ -168,15 +164,13 @@ body::after{width:380px;height:380px;left:120px;bottom:-60px;background:rgba(232
 .side nav{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:3px;padding:2px;scrollbar-width:thin}
 .side nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:14px;color:#26324d;font-size:14.5px;font-weight:600;text-decoration:none;white-space:normal;line-height:1.25;transition:background .15s,transform .15s}
 .side nav a i{font-style:normal;font-size:18px;width:24px;text-align:center;flex:none}
-.side nav a span{flex:1}
+.side #nav a{white-space:normal}
+.side nav a span{flex:1;min-width:0;overflow-wrap:anywhere}
 .side nav a em.ok{font-style:normal;color:var(--green);font-weight:800}
 .side nav a:hover{background:rgba(13,58,173,.09);transform:translateX(2px)}
 .side nav a.on{background:linear-gradient(135deg,var(--blue),var(--mid));color:#fff;box-shadow:0 6px 16px rgba(13,58,173,.32)}
 .side nav a.on em.ok{color:#a8f0bd}
 .sideBottom{display:grid;gap:8px;padding-top:10px;border-top:1px solid rgba(13,58,173,.1)}
-.side .clock{justify-content:space-between;padding:6px 8px 6px 14px;background:rgba(7,26,61,.88);font-size:14px}
-.side .clock.warn{background:#a86c00}.side .clock.late{background:var(--red)}
-.clockBtns{display:flex;gap:4px}
 .side .who{justify-content:space-between;background:rgba(255,255,255,.6);border-radius:14px;padding:6px 8px 6px 12px}
 #burger,#scrim{display:none}
 main{margin:0 0 0 296px;max-width:none;padding:30px 36px 70px}
@@ -260,3 +254,12 @@ dialog.codeDlg textarea{width:100%;height:min(52vh,420px);font:12.5px/1.45 ui-mo
 details.memSummary{margin:2px 0 6px;background:#eefaf8;border:1px solid #bfe6e1;border-radius:10px;padding:6px 12px;font-size:13.5px}
 details.memSummary summary{cursor:pointer;color:#16766d;font-weight:700}
 details.memSummary p{margin:6px 0 2px;white-space:pre-wrap;color:#26324d}
+
+.phr{margin-top:8px}.phr small{color:var(--muted)}
+.chip{display:block;width:100%;text-align:left;margin-top:4px;padding:6px 10px;border:1px solid #cfd8ee;background:#fff;border-radius:10px;font:inherit;font-size:13.5px;cursor:pointer;color:#26324d}
+.chip:hover{background:#eef4ff;border-color:var(--blue)}
+details.cmp{margin-top:12px;border:1px solid #cfd8ee;border-radius:12px;padding:8px 12px;background:#fafcff}
+details.cmp summary{cursor:pointer;font-weight:700}
+.cmpRun{margin-top:12px}.cmpRun h4{margin:0 0 6px;font-size:14px}.cmpRun h4 small{font-weight:400;color:var(--muted)}
+.cmpGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.cmpCol{background:#fff;border:1px solid #dbe3f5;border-radius:10px;padding:8px 10px;font-size:13.5px}.cmpCol b{display:block;color:var(--blue);margin-bottom:4px}

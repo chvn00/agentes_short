@@ -80,25 +80,8 @@
   }
   $('#logout').onclick = async () => { try { await api('/api/logout', 'POST', {}); } catch (e) { /* ya sin sesión */ } me = null; location.hash = ''; showAuth('Cerraste sesión.'); };
 
-  /* ---------- reloj de la sesión (2 h) ---------- */
-  const TOTAL = 120 * 60;
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento */ } };
-  const clock = { run: lsGet('clockRun', null), base: lsGet('clockBase', 0) };
-  const elapsed = () => clock.base + (clock.run ? (Date.now() - clock.run) / 1000 : 0);
-  function drawClock() {
-    const s = Math.floor(elapsed()), m = Math.floor(s / 60);
-    $('#clockTime').textContent = Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0') + ' / 2:00';
-    $('#clock').classList.toggle('warn', s >= TOTAL - 600 && s < TOTAL);
-    $('#clock').classList.toggle('late', s >= TOTAL);
-    $('#clockBtn').textContent = clock.run ? '⏸' : '▶';
-  }
-  $('#clockBtn').onclick = () => {
-    if (clock.run) { clock.base = elapsed(); clock.run = null; } else clock.run = Date.now();
-    lsSet('clockRun', clock.run); lsSet('clockBase', clock.base); drawClock();
-  };
-  $('#clockReset').onclick = () => { clock.run = null; clock.base = 0; lsSet('clockRun', null); lsSet('clockBase', 0); drawClock(); };
-  setInterval(drawClock, 1000); drawClock();
 
   /* ---------- navegación ---------- */
   const routes = () => [['inicio', 'Inicio', '🏠'], ...window.MODULES.map(m => [m.id, modLabel(m), m.icon]), ['constructor', 'Constructor de agentes', '🛠️'], ['recursos', 'Recursos', '🔗'], ['cuenta', 'Mi cuenta', '⚙️'], ...(me && me.isAdmin ? [['admin', 'Administración', '👑']] : [])];
@@ -408,6 +391,10 @@
     let provider = settings().provider;
     if (!(provider === 'groq' || (provider === 'server' && canServer) || (provider === 'ollama' && canLocal))) provider = canGroq || !canServer ? 'groq' : 'server';
     const save = () => store.set('cfg', cfg);
+    const PHRASES = {
+      exact: ['¿Cuál es la capital de Colombia?', 'Convierte 2,5 horas a minutos.', 'Explica en una sola frase qué es un token.'],
+      creative: ['Dame un nombre original para una cafetería atendida por robots.', 'Escribe un eslogan para una academia de inteligencia artificial.', 'Inventa una metáfora para explicar qué es un agente de IA.']
+    };
     const TABS = { 1: 'Modelo', 2: 'Personalidad', 3: 'Memoria', 4: 'Herramientas y APIs', 5: 'Conocimiento (RAG)' };
     const toolList = info.tools.filter(t => t.id !== 'buscar_conocimiento');
     const noKey = !canGroq;
@@ -426,7 +413,14 @@
             <div class="field"><label for="model" id="modelLbl">Modelo</label><select id="model"></select></div>
             <div class="field"><label for="temp">Temperatura: <b id="tv"></b></label><input type="range" id="temp" min="0" max="1.5" step="0.1" style="width:100%"><div class="scale"><span>0 · preciso y repetible</span><span>1.5 · creativo y variable</span></div>
               <div class="row" style="margin-top:6px"><button type="button" class="btn sm sec" data-temp="0">Preciso · 0</button><button type="button" class="btn sm sec" data-temp="0.5">Equilibrado · 0.5</button><button type="button" class="btn sm sec" data-temp="1.2">Creativo · 1.2</button></div>
-              <div class="explain" id="tempExp"></div></div>
+              <div class="explain" id="tempExp"></div>
+              <details class="cmp" open><summary>Frases de ejemplo para comparar temperaturas</summary>
+                <p class="msg2" style="margin:6px 0">Toca una frase para ponerla en el chat, o pulsa <b>Comparar</b> para ver la misma pregunta con temperatura 0, 0.7 y 1.4. Después cambia <b>«Dónde corre el modelo»</b> (nube ↔ local) y compara otra vez: verás las dos corridas juntas.</p>
+                <div class="phr"><b>Con respuesta exacta</b> <small>(conviene temperatura baja)</small>${PHRASES.exact.map(t => `<button type="button" class="chip" data-phr="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+                <div class="phr"><b>Creativas</b> <small>(conviene temperatura alta)</small>${PHRASES.creative.map(t => `<button type="button" class="chip" data-phr="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+                <div class="field" style="margin:8px 0 0"><input type="text" id="cmpQ" maxlength="300" placeholder="Escribe o elige una frase…" aria-label="Frase para comparar"></div>
+                <div class="row" style="margin-top:6px"><button type="button" class="btn sm" id="cmpGo">Comparar 0 · 0.7 · 1.4</button><button type="button" class="btn sm sec" id="cmpClear">Limpiar</button></div>
+                <div id="cmpOut"></div></details></div>
             <div class="field"><label for="maxtok">Longitud máxima de la respuesta: <b id="mtv"></b> tokens</label><input type="range" id="maxtok" min="100" max="1500" step="100" style="width:100%"><small>Un token son unas 3/4 de palabra.</small></div>
           </div></div>
 
@@ -708,11 +702,11 @@
     $('#clear').onclick = () => { chat = []; resetMem(); store.set('chat', chat); drawChat(); };
 
     // Modo Ollama: el bucle corre en tu navegador; el servidor solo prepara el prompt y ejecuta las herramientas.
-    async function askOllama(history) {
+    async function askOllama(history, c = cfg) {
       const model = settings().ollamaModel;
       if (!model) throw new Error('Conecta Ollama primero (módulo 0, paso 6).');
       const lastQ = [...history].reverse().find(m => m.role === 'user');
-      const prep = await api('/api/prepare', 'POST', { config: cfg, runtime: runtime(), query: lastQ ? lastQ.content : '' });
+      const prep = await api('/api/prepare', 'POST', { config: c, runtime: runtime(), query: lastQ ? lastQ.content : '' });
       const messages = [{ role: 'system', content: prep.system }, ...history.slice(-prep.historyLimit)], steps = prep.ragStep ? [prep.ragStep] : [];
       for (let n = 0; n < 5; n++) {
         let r;
@@ -725,16 +719,36 @@
         messages.push(msg);
         for (const c of calls) {
           const name = c.function.name, args = typeof c.function.arguments === 'string' ? JSON.parse(c.function.arguments || '{}') : (c.function.arguments || {});
-          const { result } = await api('/api/tool', 'POST', { config: cfg, name, args });
+          const { result } = await api('/api/tool', 'POST', { config: c, name, args });
           steps.push({ tool: name, args, result }); messages.push({ role: 'tool', content: result, tool_name: name });
         }
       }
       return { reply: 'Usé demasiadas herramientas sin llegar a una respuesta. Reformula la pregunta o simplifica las instrucciones.', steps };
     }
-    const ask = text => {
-      const history = chat.map(m => ({ role: m.role, content: m.content })).concat({ role: 'user', content: text });
-      if (provider === 'server') return api('/api/agent', 'POST', { config: cfg, history, provider: 'server', ollamaModel: f.model.value, memoryState: memState });
-      return provider === 'ollama' ? askOllama(history) : api('/api/agent', 'POST', { config: cfg, history, memoryState: memState });
+    const askWith = (history, c, memoryState) => {
+      if (provider === 'server') return api('/api/agent', 'POST', { config: c, history, provider: 'server', ollamaModel: f.model.value, memoryState });
+      return provider === 'ollama' ? askOllama(history, c) : api('/api/agent', 'POST', { config: c, history, memoryState });
+    };
+    const ask = text => askWith(chat.map(m => ({ role: m.role, content: m.content })).concat({ role: 'user', content: text }), cfg, memState);
+
+    /* comparar la misma pregunta con varias temperaturas (sin herramientas, notas ni memoria, para ver solo el efecto de la temperatura) */
+    const cmpRuns = [];
+    const where = () => (provider === 'groq' ? '☁️ Nube · Groq' : provider === 'server' ? '🖥️ Local · servidor' : '💻 Local · tu Ollama') + ' · ' + (runtime().model || '');
+    function drawCmp() {
+      $('#cmpOut').innerHTML = cmpRuns.map(r => `<div class="cmpRun"><h4>${esc(r.where)} <small>«${esc(r.q)}»</small></h4><div class="cmpGrid">${r.cols.map(c => `<div class="cmpCol"><b>Temperatura ${c.t}</b><div>${c.err ? `<span class="bad">${esc(c.err)}</span>` : c.text == null ? '<i>pensando…</i>' : mini(c.text)}</div></div>`).join('')}</div></div>`).join('');
+    }
+    view.querySelectorAll('[data-phr]').forEach(b => b.onclick = () => { $('#cmpQ').value = b.dataset.phr; f.q.value = b.dataset.phr; $('#cmpQ').focus(); });
+    $('#cmpClear').onclick = () => { cmpRuns.length = 0; drawCmp(); };
+    $('#cmpGo').onclick = async () => {
+      const q = $('#cmpQ').value.trim(); if (!q) { $('#cmpQ').focus(); return; }
+      read(); const btn = $('#cmpGo'); btn.disabled = true;
+      const run = { q, where: where(), cols: [0, 0.7, 1.4].map(t => ({ t, text: null })) }; cmpRuns.unshift(run); cmpRuns.length = Math.min(cmpRuns.length, 2); drawCmp();
+      for (const col of run.cols) {
+        const c = Object.assign({}, cfg, { temperature: col.t, tools: [], apis: [], memory: { mode: 'none', size: 1 }, rag: Object.assign({}, cfg.rag, { enabled: false }) });
+        try { col.text = (await askWith([{ role: 'user', content: q }], c, undefined)).reply; } catch (e) { col.err = e.message; }
+        drawCmp();
+      }
+      btn.disabled = false;
     };
     f.form.onsubmit = async e => {
       e.preventDefault(); const text = f.q.value.trim(); if (!text) return;
