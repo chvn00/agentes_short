@@ -250,3 +250,15 @@ test('RAG: el servidor busca solo y entrega los fragmentos aunque el modelo no l
   const off = await runAgent({ config: { knowledge, rag: { enabled: false } }, history: [{ role: 'user', content: '¿Cuánto cuesta?' }], llm });
   assert.strictEqual(off.steps.length, 0);
 });
+
+test('RAG: una pregunta global («resume el PDF») recibe todo el documento, repartido de principio a fin', () => {
+  const { overview, ragContext } = require('../agent');
+  const doc = Array.from({ length: 60 }, (_, i) => `Sección ${i + 1}. ` + 'contenido de relleno '.repeat(30)).join('\n\n');
+  const r = ragContext(doc, 'Resume el documento completo', 3, 600);
+  assert.ok(r.overview && r.found);
+  assert.ok(r.text.length <= 9500);
+  assert.ok(r.text.includes('Sección 1.') && /Sección (59|60)\./.test(r.text), 'cubre el inicio y el final');
+  assert.ok(/Sección (29|30|31)\./.test(r.text), 'y el centro');
+  assert.equal(overview('texto corto'), 'texto corto');
+  assert.ok(!ragContext(doc, 'cuanto cuesta la matricula', 3, 600).overview);
+});

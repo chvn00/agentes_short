@@ -118,8 +118,21 @@ function retrieve(text, query, k = 3, size = 600) {
 const searchKnowledge = (text, query, k = 3, size = 600) => retrieve(text, query, k, size).chunks.map(x => x.text);
 
 // Contexto para el modelo: los fragmentos encontrados; si no hay coincidencias y las notas son cortas, las notas completas.
-const WHOLE_NOTES_MAX = 4000;
+// Si la pregunta es global («resume el documento», «de qué trata»), se entrega una vista de TODO el texto.
+const WHOLE_NOTES_MAX = 4000, OVERVIEW_MAX = 9000;
+const GLOBAL_Q = /\b(resum|sintetiz|sintesis|de que (trata|habla|va)|todo el|todos los|completo|completa|documento|pdf|archivo|texto|ideas principales|puntos (clave|principales)|temas|contenido|indice|esquema|panorama|en general)/;
+const isGlobalQuestion = q => GLOBAL_Q.test(norm(String(q || '')));
+// Cubre el texto de principio a fin: si no cabe, toma el comienzo de fragmentos repartidos de forma pareja.
+function overview(text, budget = OVERVIEW_MAX) {
+  const t = String(text || '').trim();
+  if (t.length <= budget) return t;
+  const parts = chunk(t, 600), per = Math.max(120, Math.floor(budget / parts.length)), keep = Math.min(parts.length, Math.floor(budget / per));
+  const picked = [];
+  for (let i = 0; i < keep; i++) picked.push(parts[Math.round(i * (parts.length - 1) / Math.max(1, keep - 1))].slice(0, per));
+  return [...new Set(picked)].join('\n\n');
+}
 function ragContext(knowledge, query, k, size) {
+  if (isGlobalQuestion(query)) return { found: true, overview: true, text: overview(knowledge) };
   const found = searchKnowledge(knowledge, query, k, size);
   if (found.length) return { found: true, text: found.map((x, n) => `[${n + 1}] ${x}`).join('\n\n') };
   if (knowledge.length <= WHOLE_NOTES_MAX) return { found: false, text: knowledge.trim(), whole: true };
@@ -382,8 +395,9 @@ async function runAgent({ config, history, llm, fetchImpl = fetch, lookup, runti
     const asked = past.filter(m => m.role === 'user').slice(-2).map(m => m.content).join(' ');
     const r = ragContext(cfg.knowledge, asked, cfg.rag.k, cfg.rag.chunk);
     const lastQ = past.filter(m => m.role === 'user').pop();
-    steps.push({ tool: 'buscar_conocimiento', args: { consulta: lastQ ? lastQ.content.slice(0, 200) : '' }, result: (r.found ? r.text : r.whole ? 'Sin coincidencias exactas; se usan las notas completas.' : 'No hay fragmentos relacionados en las notas.').slice(0, 2000), auto: true });
-    messages[0].content += r.found ? `\n\nFragmentos de las notas relacionados con la pregunta:\n${r.text}`
+    steps.push({ tool: 'buscar_conocimiento', args: { consulta: lastQ ? lastQ.content.slice(0, 200) : '' }, result: (r.overview ? 'Pregunta general: se entrega el documento completo (o una muestra repartida de todo el texto).' : r.found ? r.text : r.whole ? 'Sin coincidencias exactas; se usan las notas completas.' : 'No hay fragmentos relacionados en las notas.').slice(0, 2000), auto: true });
+    messages[0].content += r.overview ? `\n\nContenido de las notas, de principio a fin (para resumir o responder preguntas generales):\n${r.text}`
+      : r.found ? `\n\nFragmentos de las notas relacionados con la pregunta:\n${r.text}`
       : r.whole ? `\n\nNotas completas del usuario (no hubo coincidencias exactas con la pregunta):\n${r.text}`
       : '\n\nNo se encontraron fragmentos de las notas relacionados con la pregunta: si es sobre las notas, di que no está ahí.';
   }
@@ -446,7 +460,7 @@ function promptVars(cfg, runtime) {
   const extra = ['Responde siempre en español, salvo que el usuario te escriba en otro idioma. Nunca mezcles caracteres chinos ni de otros alfabetos en la respuesta.'];
   if (cfg.tools.length || cfg.apis.length) extra.push('Cuando una herramienta pueda dar el dato exacto, úsala en vez de adivinar.');
   if (cfg.rag.enabled) extra.push('Las notas del usuario se buscan automáticamente: con cada pregunta recibes abajo los fragmentos relacionados. Responde solo con lo que digan esos fragmentos; si no alcanzan, di que eso no está en las notas. Puedes llamar buscar_conocimiento con otras palabras si necesitas más.');
-  else if (cfg.knowledge) extra.push('Notas del usuario:\n' + cfg.knowledge.slice(0, 6000));
+  else if (cfg.knowledge) extra.push('Notas del usuario:\n' + overview(cfg.knowledge, OVERVIEW_MAX));
   const instr = cfg.system.trim();
   const any = cfg.persona.trim() || cfg.style.trim() || formatText(cfg) || cfg.rules.trim() || instr;
   return {
@@ -475,10 +489,10 @@ function prepare(rawConfig, rawRuntime, rawQuery) {
   const query = str(rawQuery, 600);
   if (query && cfg.rag.enabled && cfg.knowledge.trim()) { // misma recuperación automática que en runAgent, para el modo Ollama del navegador
     const r = ragContext(cfg.knowledge, query, cfg.rag.k, cfg.rag.chunk);
-    ragStep = { tool: 'buscar_conocimiento', args: { consulta: query.slice(0, 200) }, result: (r.found ? r.text : r.whole ? 'Sin coincidencias exactas; se usan las notas completas.' : 'No hay fragmentos relacionados en las notas.').slice(0, 2000), auto: true };
-    system += r.found ? `\n\nFragmentos de las notas relacionados con la pregunta:\n${r.text}` : r.whole ? `\n\nNotas completas del usuario (no hubo coincidencias exactas con la pregunta):\n${r.text}` : '\n\nNo se encontraron fragmentos de las notas relacionados con la pregunta: si es sobre las notas, di que no está ahí.';
+    ragStep = { tool: 'buscar_conocimiento', args: { consulta: query.slice(0, 200) }, result: (r.overview ? 'Pregunta general: se entrega el documento completo (o una muestra repartida de todo el texto).' : r.found ? r.text : r.whole ? 'Sin coincidencias exactas; se usan las notas completas.' : 'No hay fragmentos relacionados en las notas.').slice(0, 2000), auto: true };
+    system += r.overview ? `\n\nContenido de las notas, de principio a fin (para resumir o responder preguntas generales):\n${r.text}` : r.found ? `\n\nFragmentos de las notas relacionados con la pregunta:\n${r.text}` : r.whole ? `\n\nNotas completas del usuario (no hubo coincidencias exactas con la pregunta):\n${r.text}` : '\n\nNo se encontraron fragmentos de las notas relacionados con la pregunta: si es sobre las notas, di que no está ahí.';
   }
   return { system, ragStep, vars: promptVars(cfg, runtime), tools: Object.values(toolsFor(cfg)).map(t => t.def), temperature: cfg.temperature, maxTokens: cfg.maxTokens, historyLimit: historyLimit(cfg) };
 }
 
-module.exports = { stripCjk, runTool, prepare, buildSystem, promptVars, PROMPT_LINES, FORMATS, DEFAULT_MODEL, retrieve, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };
+module.exports = { stripCjk, runTool, prepare, buildSystem, promptVars, PROMPT_LINES, FORMATS, DEFAULT_MODEL, retrieve, overview, ragContext, safeGet, isPrivateIp, apiParams, historyLimit, calc, searchKnowledge, sanitizeConfig, sanitizeHistory, runAgent, TOOLS, MODELS, MAX_STEPS };

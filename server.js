@@ -94,7 +94,7 @@ function makeOllamaLlm(model) {
     const ask = async (temp, withTools) => {
       let res;
       try {
-        res = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', headers: ollamaHeaders({ 'Content-Type': 'application/json' }), signal: AbortSignal.timeout(180000), body: JSON.stringify({ model, messages: body, tools: withTools ? tools : undefined, stream: false, options: { temperature: temp, num_predict: maxTokens || 700 } }) });
+        res = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', headers: ollamaHeaders({ 'Content-Type': 'application/json' }), signal: AbortSignal.timeout(180000), body: JSON.stringify({ model, messages: body, tools: withTools ? tools : undefined, stream: false, options: { temperature: temp, num_predict: maxTokens || 700, num_ctx: 8192 } }) });
       } catch { throw Object.assign(new Error('El Ollama del servidor no respondió. Avísale al docente.'), { status: 502 }); }
       if (!res.ok) {
         const t = await res.text();

@@ -721,7 +721,7 @@
       for (let n = 0; n < 5; n++) {
         let r;
         try {
-          r = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', body: JSON.stringify({ model, messages, stream: false, tools: prep.tools.length ? prep.tools : undefined, options: { temperature: prep.temperature, num_predict: prep.maxTokens } }) });
+          r = await fetch(OLLAMA_URL + '/api/chat', { method: 'POST', body: JSON.stringify({ model, messages, stream: false, tools: prep.tools.length ? prep.tools : undefined, options: { temperature: prep.temperature, num_predict: prep.maxTokens, num_ctx: 8192 } }) });
         } catch (e) { throw new Error('No pude conectar con Ollama. Revisa que esté abierto y los pasos 5 y 6 del módulo 0.'); }
         if (!r.ok) { const t = await r.text(); throw new Error(/does not support tools/i.test(t) ? 'Ese modelo no soporta herramientas. Usa llama3.2 o desactiva las herramientas.' : 'Ollama no pudo responder: ' + t.slice(0, 160)); }
         const msg = (await r.json()).message || {}, calls = msg.tool_calls || [];
