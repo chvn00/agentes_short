@@ -345,7 +345,7 @@
       ['FastAPI', 'https://fastapi.tiangolo.com/tutorial/', 'Publicar tu agente como API.'],
       ['Railway', 'https://docs.railway.com/', 'Poner el agente en línea.']
     ];
-    view.innerHTML = `<div class="pagehead"><h1>Recursos</h1><p>Para seguir después del taller.</p></div><div class="grid g2">${L.map(l => `<div class="card links"><h3>${esc(l[0])}</h3><p>${esc(l[2])}</p><p style="margin-top:6px"><a href="${l[1]}" target="_blank" rel="noopener">${esc(l[1].replace('https://', ''))} ↗</a></p></div>`).join('')}</div>`;
+    view.innerHTML = `<div class="pagehead"><h1>Recursos</h1><p>Para seguir después del taller. Toca el nombre para abrir cada sitio en otra pestaña.</p></div><div class="grid g2">${L.map(l => `<div class="card links"><h3><a href="${l[1]}" target="_blank" rel="noopener noreferrer">${esc(l[0])} ↗</a></h3><p>${esc(l[2])}</p></div>`).join('')}</div>`;
   }
 
   /* ---------- constructor ---------- */

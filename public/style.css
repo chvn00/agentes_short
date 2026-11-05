@@ -263,3 +263,5 @@ details.cmp summary{cursor:pointer;font-weight:700}
 .cmpRun{margin-top:12px}.cmpRun h4{margin:0 0 6px;font-size:14px}.cmpRun h4 small{font-weight:400;color:var(--muted)}
 .cmpGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
 .cmpCol{background:#fff;border:1px solid #dbe3f5;border-radius:10px;padding:8px 10px;font-size:13.5px}.cmpCol b{display:block;color:var(--blue);margin-bottom:4px}
+
+.links h3 a{color:var(--blue);text-decoration:none;font-weight:800}.links h3 a:hover{text-decoration:underline}
