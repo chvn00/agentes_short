@@ -407,26 +407,29 @@
     let provider = settings().provider;
     if (!(provider === 'groq' || (provider === 'server' && canServer) || (provider === 'ollama' && canLocal))) provider = canGroq || !canServer ? 'groq' : 'server';
     const save = () => store.set('cfg', cfg);
+    const TABS = { 1: 'Modelo', 2: 'Personalidad', 3: 'Memoria', 4: 'Herramientas y APIs', 5: 'Conocimiento (RAG)' };
     const toolList = info.tools.filter(t => t.id !== 'buscar_conocimiento');
     const noKey = !canGroq;
 
     view.innerHTML = `
       <div id="warn"></div>
       <div class="builder">
-        <section class="panel cfg"><h2>Configura tu agente</h2>
-          <div class="field"><label for="mine">Mis agentes guardados</label><div class="row"><select id="mine" style="flex:1;min-width:0"><option value="">— ninguno —</option></select><button class="btn sm" id="mineSave" type="button">Guardar</button><button class="btn sm sec" id="mineDel" type="button">Borrar</button></div><small id="mineMsg">Se guardan en tu cuenta.</small></div>
-          <div class="field"><label for="preset">Empezar desde un ejemplo</label><select id="preset"><option value="">— elige —</option>${Object.entries(window.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.name)}</option>`).join('')}</select></div>
-
-          <details class="sec" open><summary><span class="n">1</span>Modelo y temperatura</summary><div class="body">
+        <section class="panel cfg"><div class="cfgtop">
+            <div class="field"><label for="mine">Mis agentes guardados</label><div class="row"><select id="mine" style="flex:1;min-width:0"><option value="">— ninguno —</option></select><button class="btn sm" id="mineSave" type="button">Guardar</button><button class="btn sm sec" id="mineDel" type="button">Borrar</button></div><small id="mineMsg">Se guardan en tu cuenta.</small></div>
+            <div class="field"><label for="preset">Empezar desde un ejemplo</label><select id="preset"><option value="">— elige —</option>${Object.entries(window.PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.name)}</option>`).join('')}</select></div>
+            <div class="field"><label>Exportar o importar</label><div class="row"><button class="btn sm" id="dlJson" type="button">Ver / copiar .json</button><button class="btn sm sec" id="dlLc" type="button">Python con LangChain</button><button class="btn sm sec" id="dlPy" type="button">Python con Groq</button><button class="btn sm sec" id="imp" type="button">Pegar .json</button></div></div>
+          </div>
+          <div class="ctabs" role="tablist" aria-label="Configuración del agente">${Object.entries(TABS).map(([n, t]) => `<button type="button" class="ctab" role="tab" data-tab="${n}" aria-controls="pane${n}"><span class="n">${n}</span>${t}</button>`).join('')}</div>
+          <div class="pane" id="pane1" role="tabpanel" data-pane="1"><div class="body">
             <div class="field"><label for="prov">Dónde corre el modelo</label><select id="prov"><option value="groq">En la nube · Groq</option>${canServer ? '<option value="server">Modelos locales del servidor (sin instalar nada)</option>' : '<option value="" disabled>Modelos locales del servidor: no disponibles en este servidor</option>'}${canLocal ? '<option value="ollama">En mi equipo · Ollama</option>' : ''}</select></div>
             <div class="field"><label for="model" id="modelLbl">Modelo</label><select id="model"></select></div>
             <div class="field"><label for="temp">Temperatura: <b id="tv"></b></label><input type="range" id="temp" min="0" max="1.5" step="0.1" style="width:100%"><div class="scale"><span>0 · preciso y repetible</span><span>1.5 · creativo y variable</span></div>
               <div class="row" style="margin-top:6px"><button type="button" class="btn sm sec" data-temp="0">Preciso · 0</button><button type="button" class="btn sm sec" data-temp="0.5">Equilibrado · 0.5</button><button type="button" class="btn sm sec" data-temp="1.2">Creativo · 1.2</button></div>
               <div class="explain" id="tempExp"></div></div>
             <div class="field"><label for="maxtok">Longitud máxima de la respuesta: <b id="mtv"></b> tokens</label><input type="range" id="maxtok" min="100" max="1500" step="100" style="width:100%"><small>Un token son unas 3/4 de palabra.</small></div>
-          </div></details>
+          </div></div>
 
-          <details class="sec" open><summary><span class="n">2</span>Personalidad y respuestas</summary><div class="body">
+          <div class="pane" id="pane2" role="tabpanel" data-pane="2" hidden><div class="body">
             <small style="display:block;margin-bottom:8px">Todo se configura con texto: estos campos llenan una <b>plantilla de prompt</b> (como un <code>ChatPromptTemplate</code> de LangChain) y el modelo la recibe como sus instrucciones.</small>
             <div class="field"><label for="name">Nombre del agente <code class="var">{nombre}</code></label><input type="text" id="name" maxlength="40"></div>
             <div class="field"><label for="persona">Personalidad <code class="var">{personalidad}</code></label><textarea id="persona" rows="2" maxlength="600" placeholder="Ej.: Curiosa, paciente y con sentido del humor; le encanta explicar con analogías."></textarea></div>
@@ -436,23 +439,23 @@
             <div class="field"><label for="rules">Reglas y límites <code class="var">{reglas}</code></label><textarea id="rules" rows="2" maxlength="800" placeholder="Ej.: No inventes datos. Si no sabes, dilo. Responde siempre en español."></textarea></div>
             <div class="field"><label for="system">Instrucciones adicionales <code class="var">{instrucciones}</code></label><textarea id="system" rows="5" maxlength="3000" placeholder="Cualquier otra indicación sobre el rol y la tarea."></textarea></div>
             <details class="preview"><summary>Ver el prompt final que recibe el modelo</summary><pre id="promptPrev"></pre></details>
-          </div></details>
+          </div></div>
 
-          <details class="sec" open><summary><span class="n">3</span>Memoria</summary><div class="body">
+          <div class="pane" id="pane3" role="tabpanel" data-pane="3" hidden><div class="body">
             <div class="field"><label for="memMode">Qué recuerda de la conversación</label><select id="memMode"><option value="none">Sin memoria: solo ve tu último mensaje</option><option value="window">Ventana: los últimos mensajes</option><option value="full">Completa: hasta 20 mensajes</option></select></div>
             <div class="field" id="memSizeBox"><label for="memSize">Mensajes que recuerda: <b id="msv"></b></label><input type="range" id="memSize" min="2" max="20" step="2" style="width:100%"></div>
             <div class="explain" id="memExp"></div>
             <small>Prueba: dile tu nombre y, tres mensajes después, pregunta «¿cómo me llamo?». En el chat, lo que el agente ya olvidó aparece atenuado.</small>
-          </div></details>
+          </div></div>
 
-          <details class="sec" open><summary><span class="n">4</span>Herramientas y APIs</summary><div class="body">
+          <div class="pane" id="pane4" role="tabpanel" data-pane="4" hidden><div class="body">
             <div class="field"><label>Herramientas listas para usar</label>${toolList.map(t => `<label class="tool"><input type="checkbox" data-tool="${esc(t.id)}"><div><b>${esc(t.label)}</b><span>${esc(t.description)}</span></div></label>`).join('')}</div>
             <div class="field"><label>Mis APIs <small style="font-weight:400">(hasta 3, públicas y sin clave)</small></label><div id="apis"></div>
               <div class="row" style="margin-top:6px"><select id="apiEx" style="flex:1;min-width:0"><option value="">+ Agregar API…</option><option value="edad">Ejemplo: edad según el nombre</option><option value="ciudad">Ejemplo: datos de una ciudad</option><option value="github">Ejemplo: usuario de GitHub</option><option value="vacio">En blanco</option></select></div>
               <small>Escribe la URL con los datos variables entre llaves, por ejemplo <code>{nombre}</code>. El agente decide cuándo llamarla y con qué valor. Solo https.</small></div>
-          </div></details>
+          </div></div>
 
-          <details class="sec" open><summary><span class="n">5</span>Conocimiento (RAG)</summary><div class="body">
+          <div class="pane" id="pane5" role="tabpanel" data-pane="5" hidden><div class="body">
             <label class="tool" style="padding-top:0"><input type="checkbox" id="ragOn"><div><b>Activar RAG</b><span>El agente busca en tus documentos antes de responder y cita lo que encuentra. Sin RAG, el texto se le envía completo como contexto.</span></div></label>
             <div class="field"><label for="kn">Tus documentos</label><textarea id="kn" rows="5" maxlength="60000" placeholder="Pega aquí el texto o carga archivos: se juntan todos en este cuadro."></textarea>
               <div class="row" style="margin-top:6px;align-items:center"><select id="knSample" style="max-width:100%"><option value="">+ Documento de ejemplo…</option>${Object.entries(window.SAMPLE_DOCS).map(([k, d]) => `<option value="${k}">${esc(d.title)}</option>`).join('')}</select><button class="btn sm sec" id="knFile" type="button">Cargar PDF, .md, .txt o .csv</button><button class="btn sm sec" id="knClear" type="button">Vaciar</button><input type="file" id="knFileIn" accept=".pdf,.md,.markdown,.txt,.csv,application/pdf,text/markdown,text/plain,text/csv" multiple hidden><small id="knCount"></small></div><small id="knMsg" style="display:block;margin-top:4px"></small></div>
@@ -461,9 +464,8 @@
               <div class="field"><label for="ragChunk">Tamaño de fragmento</label><select id="ragChunk"><option value="300">Pequeño (300)</option><option value="600">Mediano (600)</option><option value="1000">Grande (1000)</option></select></div>
             </div>
             <div class="field"><label for="ragQ">Probar la búsqueda</label><div class="row"><input type="text" id="ragQ" placeholder="Escribe una pregunta de prueba" style="flex:1;min-width:0"><button class="btn sm" id="ragGo" type="button">Buscar</button></div><div id="ragOut"></div></div>
-          </div></details>
+          </div></div>
 
-          <div class="row"><button class="btn sm" id="dlJson" type="button">Ver / copiar .json</button><button class="btn sm sec" id="dlLc" type="button">Python con LangChain</button><button class="btn sm sec" id="dlPy" type="button">Python con Groq</button><button class="btn sm sec" id="imp" type="button">Pegar .json</button></div>
         </section>
         <section class="panel chat"><div class="row" style="justify-content:space-between;align-items:center"><h2 id="title" style="margin:0"></h2><button class="btn sm sec" id="clear" type="button">Nueva conversación</button></div>
           <div class="sumry" id="sumry"></div>
@@ -480,6 +482,21 @@
         <div class="row" style="margin-top:8px"><button class="btn sm" id="codeCopy" type="button">Copiar todo</button><button class="btn sm sec" id="codeSave" type="button">Descargar archivo (si tu equipo lo permite)</button><small id="codeMsg"></small></div></dialog>`;
 
     const f = {}; ['preset', 'prov', 'name', 'system', 'model', 'modelLbl', 'temp', 'tv', 'maxtok', 'mtv', 'memMode', 'memSize', 'msv', 'memSizeBox', 'apis', 'apiEx', 'ragOn', 'kn', 'knCount', 'ragK', 'rkv', 'ragChunk', 'ragQ', 'persona', 'style', 'format', 'formatCustom', 'rules', 'promptPrev', 'ragOut', 'tempExp', 'memExp', 'knMsg', 'msgs', 'form', 'q', 'send', 'title', 'warn', 'mine', 'mineMsg', 'sumry'].forEach(id => f[id] = $('#' + id));
+
+    const tabBtns = [...view.querySelectorAll('.ctab')], panes = [...view.querySelectorAll('.pane')];
+    function showTab(n) {
+      n = TABS[n] ? String(n) : '1';
+      tabBtns.forEach(b => { const on = b.dataset.tab === n; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; });
+      panes.forEach(p => { p.hidden = p.dataset.pane !== n; });
+      store.set('tab', n);
+    }
+    tabBtns.forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+    view.querySelector('.ctabs').addEventListener('keydown', e => {
+      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key]; if (!k) return;
+      const cur = tabBtns.findIndex(b => b.classList.contains('on')), nx = tabBtns[(cur + k + tabBtns.length) % tabBtns.length];
+      showTab(nx.dataset.tab); nx.focus();
+    });
+    showTab(store.get('tab', '1'));
 
     function drawWarn() {
       f.warn.innerHTML = provider === 'groq' && noKey ? `<div class="notice">Todavía no hay clave de Groq para ti. Guárdala en <a href="#cuenta">Mi cuenta</a>${canServer ? ', o cambia a «Modelos locales del servidor»' : ''}; también puedes pedirle al docente que habilite la del curso.</div>` : '';
